@@ -33,12 +33,7 @@ optDet.angle = 22.5
 # check if pixelsize smaller than Nyquist 
 dxExc = optExc.lam/2/optExc.NA
 dxDet = optDet.lam/2/optDet.NA
-# optExc.dx = dxDet/2
-# optExc.dy = optExc.dx
-# optExc.dz = optExc.dx
-# optDet.dx = optExc.dx
-# optDet.dy = optExc.dx
-# optDet.dz = optExc.dx
+
 if np.min([dxDet, dxExc]) <= optExc.dx:
     print('..........................Warning ...................................... -> K-Space not Nyquist sampled for choosen NA and dx.')
 #%%
@@ -49,6 +44,7 @@ anglePara.res = 5 #deg
 anglePara.numSteps = round((anglePara.end-anglePara.start)/anglePara.res)
 
 mainPath = "C:\\Users\\Goerlitz\\Documents\\temp\\20250728_BrilloScat_0_5_90_deg_08_02_NA\\"
+
 
 # %% pepare vols histo parameters
 psfE, psfDgen, theta, phi, bins, angles_rad, sexy, kxy = bf.prepPara(optExc, optDet)

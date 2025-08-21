@@ -1,10 +1,7 @@
 import biobeam as bb
 import numpy as np
-import time
-from types import SimpleNamespace
 from numpy.fft import fftn, fftshift, fftfreq
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 from scipy.ndimage import center_of_mass
 from scipy.ndimage import rotate
 import os
@@ -58,7 +55,6 @@ def prepPara(optExc, optDet):
 def rotPSF(psfDgen, angle):
     #s = time.time()
     psfD = rotate(psfDgen, angle, axes=(0, 1), reshape=False, order=3)
-    psfD = psfDgen
     #e = time.time()
     #print(f"Time - rotate detection PSF old: {e - s} s")
     return psfD
@@ -97,6 +93,41 @@ def calcPScom(psfE, psfD, theta, phi):
     #e = time.time()
     #print(f"Time - power spectrum: {e - s} s")
     return psS, psSinc, psfS, psE, psD, ps1, ts1, ts1inc, ps1inc, tE, pE, tD, pD
+
+def calcPScomInc(psfE, psfD, theta, phi):
+    # #s = time.time()
+    # # excitation
+    # otfEcoh = fftshift(fftn(psfE)) # coherent OTF
+    # psE = np.abs(otfEcoh) ** 2 # power spectrum
+    # comE = tuple(np.round(center_of_mass(psE)).astype(int))
+    # tE = theta[comE]
+    # pE = phi[comE]
+    # # detection
+    # otfDcoh = fftshift(fftn(psfD)) # coherent OTF
+    # psD = np.abs(otfDcoh) ** 2 # power spectrum
+    # comD = tuple(np.round(center_of_mass(psD)).astype(int))
+    # tD = theta[comD]
+    # pD = phi[comD]
+    # # system
+    # psS = psE * psD
+    
+    # # com of ps
+    # comS = tuple(np.round(center_of_mass(psS)).astype(int))
+    # ts1 = theta[comS]
+    # ps1 = phi[comS]
+    # #print(f"COM (deg) System PS: θ = {ts1:.2f}, φ = {ps1:.2f}")
+    
+    # semi-incoherent 
+    psfS = psfE * psfD
+    otfSincoh = fftshift(fftn(psfS)) # coherent OTF
+    psSinc = np.abs(otfSincoh) ** 2 # power spectrum
+    comSinc = tuple(np.round(center_of_mass(psSinc)).astype(int))
+    ts1inc = theta[comSinc]
+    ps1inc = phi[comSinc]
+    #print(f"COM (deg) System PS inc: θ = {ts1inc:.2f}, φ = {ps1inc:.2f}")
+    #e = time.time()
+    #print(f"Time - power spectrum: {e - s} s")
+    return psSinc, ts1inc, ps1inc
 
 def gen1Dhisto(theta, psS, bins, angle, name, path):
     power_flat = psS.flatten()
@@ -140,10 +171,15 @@ def calc2Dhisto(theta, phi, powSpec, angle, name, path):# Flatten all arrays to 
     )
     plt.xlabel('Polar angle θ [deg]')
     plt.ylabel('Azimuthal angle φ [deg]')
-    plt.title('Angular Power Distribution' + "\n" + name +" / "+ f"angle : {angle:.2f}")
     plt.colorbar(label='Power')
-    plt.savefig(path + name + f"_{angle:.2f}" + "_angularPowerDistribution2D.png", dpi=300, bbox_inches='tight')
-    np.savetxt(path + name + f"_{angle:.2f}" + "_angularPowerDistribution2D.txt", hist, fmt='%.5f')
+    if isinstance(angle, str):
+        plt.title('Angular Power Distribution' + "\n" + name +" / "+ angle)
+        plt.savefig(path + name + angle + "_angularPowerDistribution2D.png", dpi=300, bbox_inches='tight')
+        np.savetxt(path + name + angle + "_angularPowerDistribution2D.txt", hist, fmt='%.5f')
+    else:
+        plt.title('Angular Power Distribution' + "\n" + name +" / "+ f"angle : {angle:.2f}")
+        plt.savefig(path + name + f"_{angle:.2f}" + "_angularPowerDistribution2D.png", dpi=300, bbox_inches='tight')
+        np.savetxt(path + name + f"_{angle:.2f}" + "_angularPowerDistribution2D.txt", hist, fmt='%.5f')
     #plt.show()
     plt.close()
     
@@ -215,3 +251,156 @@ def saveMaxProj(arr, ext, angle, name1, name2, path):
     np.save(path + name2 + f"_{angle:.2f}" + '_Vol.npy', arr)
     #plt.sh←w()
     plt.close()
+    
+def plotRes(data, mainPath):
+    a = data[:,0]
+    tCoh = data[:,1]
+    tInc = data[:,3]
+    tE = data[:,5]
+    tD = data[:,7]
+    pCoh = data[:,2]
+    pInc = data[:,4]
+    pE = data[:,6]
+    pD = data[:,8]
+    
+    plt.figure(figsize=(8, 6))
+    
+    # Plot coherent CoM
+    plt.plot(a, tCoh, 'o-', label='system coherent')
+    plt.plot(a, tInc, 'o--', label='system incoherent')
+    plt.plot(a, tE, color='black', linestyle =':', label='excitation')
+    plt.plot(a, tD, color='grey', linestyle =':', label='detection')
+    # Labels and title
+    plt.xlabel("Detection Angle (degrees)")
+    plt.ylabel("Center of Mass θ (degrees)")
+    plt.title("θ CoM vs detection angle")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(mainPath + "thetaVSangle.png", dpi=300, bbox_inches='tight')
+    plt.show()
+    plt.close()
+    
+    plt.figure(figsize=(8, 6))
+    
+    # Plot coherent CoM
+    plt.plot(a, pCoh, 'o-', label='system coherent')
+    plt.plot(a, pInc, 'o--', label='system incoherent')
+    plt.plot(a, pE, color='black', linestyle =':', label='excitation')
+    plt.plot(a, pD, color='grey', linestyle =':', label='detection')
+    
+    # Labels and title
+    plt.xlabel("Detection Angle (degrees)")
+    plt.ylabel("Center of Mass φ (degrees)")
+    plt.title("φ CoM vs detection angle")
+    plt.savefig(mainPath + "phiVSangle.png", dpi=300, bbox_inches='tight')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+    plt.close()
+
+def plotResInc(data, mainPath):
+    a = data[:,0]
+    tInc = data[:,1]
+    pInc = data[:,2]
+
+    
+    plt.figure(figsize=(8, 6))
+    
+    # Plot coherent CoM
+    plt.plot(a, tInc, 'o--', label='system incoherent')
+    # Labels and title
+    plt.xlabel("Detection Angle (degrees)")
+    plt.ylabel("Center of Mass θ (degrees)")
+    plt.title("θ CoM vs detection angle")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(mainPath + "thetaVSangle.png", dpi=300, bbox_inches='tight')
+    plt.show()
+    plt.close()
+    
+    plt.figure(figsize=(8, 6))
+    
+    # Plot coherent CoM
+    plt.plot(a, pInc, 'o--', label='system incoherent')
+    
+    # Labels and title
+    plt.xlabel("Detection Angle (degrees)")
+    plt.ylabel("Center of Mass φ (degrees)")
+    plt.title("φ CoM vs detection angle")
+    plt.savefig(mainPath + "phiVSangle.png", dpi=300, bbox_inches='tight')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+    plt.close()
+
+def plot_max_projections(volume, voxel_size=(1.0, 1.0, 1.0), cmap='hot', title="Max Intensity Projections"):
+    """
+    chatGPT generated
+    Plottet Maximalprojektionen eines 3D-Volumes in allen drei Dimensionen mit Titel.
+    
+    Parameters:
+        volume (ndarray): 3D-Array (Z, Y, X)
+        voxel_size (tuple): (dz, dy, dx) Voxelgrößen für Achsenskalierung
+        cmap (str): Colormap für das Plotten
+        title (str): Gesamttitel der Figure
+    """
+    dz, dy, dx = voxel_size
+
+    # Max-Projektionen berechnen
+    max_xy = np.max(volume, axis=0)  # Projektion über Z
+    max_xz = np.max(volume, axis=1)  # Projektion über Y
+    max_yz = np.max(volume, axis=2)  # Projektion über X
+
+    # Plot erstellen
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    fig.suptitle(title, fontsize=16)
+
+    # XY-Projektion
+    Z, Y, X = volume.shape
+
+    extent_xy = [
+        -X//2 * dx,  X//2 * dx,   # X-Achse
+        -Y//2 * dy,  Y//2 * dy    # Y-Achse
+        ]
+    
+    extent_xz = [
+        -X//2 * dx,  X//2 * dx,   # X-Achse
+        -Z//2 * dz,  Z//2 * dz    # Z-Achse
+        ]
+    
+    extent_yz = [
+        -Y//2 * dy,  Y//2 * dy,   # Y-Achse
+        -Z//2 * dz,  Z//2 * dz    # Z-Achse
+        ]
+    
+    axes[0].imshow(max_xy, cmap=cmap, extent=extent_xy, origin='lower', aspect='auto')
+    axes[0].set_title('Z → XY')
+    axes[0].set_xlabel('X (µm)')
+    axes[0].set_ylabel('Y (µm)')
+
+    # XZ-Projektion
+    #extent_xz = [0, volume.shape[2] * dx, 0, volume.shape[0] * dz]
+    axes[1].imshow(max_xz, cmap=cmap, extent=extent_xz, origin='lower', aspect='auto')
+    axes[1].set_title('Y → XZ')
+    axes[1].set_xlabel('X (µm)')
+    axes[1].set_ylabel('Z (µm)')
+
+    # YZ-Projektion
+    #extent_yz = [0, volume.shape[1] * dy, 0, volume.shape[0] * dz]
+    axes[2].imshow(max_yz, cmap=cmap, extent=extent_yz, origin='lower', aspect='auto')
+    axes[2].set_title('X → YZ')
+    axes[2].set_xlabel('Y (µm)')
+    axes[2].set_ylabel('Z (µm)')
+
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.show()
+
+    # # gen and save 1D histo
+    # psEH, beEH = bf.gen1Dhisto(theta, psE, bins, angle, "excitation", path)
+    # psDH, beDH = bf.gen1Dhisto(theta, psD, bins, angle, "detection", path)
+    # psShcoh, beSHc = bf.gen1Dhisto(theta, psScoh, bins, angle, "systemCoh", path)
+    # psShinc, beSHi = bf.gen1Dhisto(theta, psSinc, bins, angle, "systemInc", path)
