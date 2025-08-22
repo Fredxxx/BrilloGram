@@ -17,7 +17,7 @@ optExc = SimpleNamespace()
 optExc.Nx = 512
 optExc.Ny = optExc.Nx
 optExc.Nz = optExc.Nx
-optExc.dx = 0.2
+optExc.dx = 0.075
 optExc.dy = optExc.dx
 optExc.dz = optExc.dx
 optExc.NA = 0.4
@@ -31,7 +31,7 @@ optDet.Nz = optDet.Nx
 optDet.dx = optExc.dx
 optDet.dy = optDet.dx
 optDet.dz = optDet.dx
-optDet.NA = 0.8
+optDet.NA = 0.4
 optDet.n0 = optExc.n0
 optDet.lam = 0.580
 optDet.angle = 90
@@ -60,9 +60,9 @@ mainPath = "C:\\Users\\Goerlitz\\Documents\\temp\\20250729_scaScatt_512\\"
 
 def create_sphere_with_gaussian_noise(shape=(optExc.Nx*2, optExc.Nx*2, optExc.Nx*2),
                                       n_background=1.33,
-                                      n_sphere=1.34,
-                                      radius=128,
-                                      noise_std=0.001,
+                                      n_sphere=1.43,
+                                      radius=256,
+                                      noise_std=0.01,
                                       center=None):
 
     Z, Y, X = shape
@@ -85,32 +85,49 @@ def create_sphere_with_gaussian_noise(shape=(optExc.Nx*2, optExc.Nx*2, optExc.Nx
 # Example usage
 vol = create_sphere_with_gaussian_noise(shape=(optExc.Nx, optExc.Nx, optExc.Nx),
                                         n_background=1.33,
-                                        n_sphere=1.44,
-                                        radius=30,
+                                        n_sphere=1.43,
+                                        radius=256,
                                         noise_std=0.01)
-padded_scatVol = vol
 
+padded_scatVol = np.random.normal(1.33, 0.01, size=(vol.shape[0]*3, vol.shape[1]*3, vol.shape[2]*3))
+
+# Shapes
+sz, sy, sx = vol.shape
 Z, Y, X = padded_scatVol.shape
 
+# Start-Indices (zentriert)
+start_z = (Z - sz) // 2
+start_y = (Y - sy) // 2
+start_x = (X - sx) // 2
+
+# End-Indices
+end_z = start_z + sz
+end_y = start_y + sy
+end_x = start_x + sx
+
+# Insert
+padded_scatVol[start_z:end_z, start_y:end_y, start_x:end_x] = vol
 print("... propagation volume loaded/generated")
+
 # %% pepare vols histo parameters and scatter propagator
 psfE, psfDgen, theta, phi, bins, angles_rad, sexy, kxy = bf.prepPara(optExc, optDet)
 print("... prepared PSFs")
+
 #%%
 scatDim = optExc.dx
 
 
-xSize = 100/optDet.dx
+xSize = 20/optDet.dx
 ySize = xSize
 
-xSteps = 1
-ySteps = xSteps
+xSteps = 3
+ySteps = 1
 
 xStepsSize = round(xSize/xSteps)
 yStepsSize = xStepsSize
 
 
-xstart = 256#round(X/2 -  xSize/2)
+xstart = round(X/2 -  xSize/2)
 zstart = round(Z/2)
 
 dTheta = np.zeros((xSteps, ySteps))
@@ -118,7 +135,7 @@ dPhi = np.zeros((xSteps, ySteps))
 
 for i in range(xSteps):
     
-    ystart = 256#round(Y/2 -  ySize/2)
+    ystart = round(Y/2 -  ySize/2)
     for j in range(ySteps):
         
         # shift volume
@@ -127,9 +144,9 @@ for i in range(xSteps):
             shifted_vol = vol
         else:
             shifted_vol = padded_scatVol[
-            xstart:xstart + X,
-            zstart:zstart + Z,
-            ystart:ystart + Y]
+            xstart:xstart + sx,
+            zstart:zstart + sz,
+            ystart:ystart + sy]
         print(xstart, ystart, zstart)
         filename = f"shiftVol_x{i:02d}_y{j:02d}"
         path = mainPath + f"shiftVol_x{i:02d}_y{j:02d}" 
@@ -150,22 +167,44 @@ for i in range(xSteps):
         
         # propagator
 
+        # # Setup propagator excitation
+        # prop = bb.Bpm3d(dn=vol, units = (optDet.dx,)*3, lam=optExc.lam/optExc.n0)
+        # propVol = np.asarray(vol, dtype=np.complex64)
+
+        # # setup propagator detection, after rotation
+        # scatVolrot = bf.rotPSF(vol, -optDet.angle)
+        # propD = bb.Bpm3d(dn=scatVolrot, units = (optDet.dx,)*3, lam=optDet.lam/optExc.n0)
+        # propVolrot = np.asarray(scatVolrot, dtype=np.complex64)
+
+
+        # # prop excitation 
+        # psfEscat = prop.propagate(u0 = psfE[0,:,:])
+        # #pro detection and rotate
+        # psfDscatrot = propD.propagate(u0 = psfDgen[0,:,:])
+        # psfD = bf.rotPSF(psfDgen, optDet.angle)
+        # psfDscat = bf.rotPSF(psfDscatrot, optDet.angle)
+
+
+        # %% propagator
+        
         # Setup propagator excitation
-        prop = bb.Bpm3d(dn=vol, units = (optDet.dx,)*3, lam=optExc.lam/optExc.n0)
-        propVol = np.asarray(vol, dtype=np.complex64)
-
+        prop = bb.Bpm3d(dn=shifted_vol, units = (optDet.dx,)*3, lam=optExc.lam/optExc.n0)
+        propVol = np.asarray(shifted_vol, dtype=np.complex64)
+        
         # setup propagator detection, after rotation
-        scatVolrot = bf.rotPSF(vol, -optDet.angle)
-        propD = bb.Bpm3d(dn=scatVolrot, units = (optDet.dx,)*3, lam=optDet.lam/optExc.n0)
-        propVolrot = np.asarray(scatVolrot, dtype=np.complex64)
-
-
+        # scatVolrot = bf.rotPSF(shifted_vol, -optDet.angle)
+        # propD = bb.Bpm3d(dn=scatVolrot, units = (optDet.dx,)*3, lam=optDet.lam/optExc.n0)
+        # propVolrot = np.asarray(scatVolrot, dtype=np.complex64)
+        propD = bb.Bpm3d(dn=shifted_vol, units = (optDet.dx,)*3, lam=optDet.lam/optExc.n0)
+        
         # prop excitation 
         psfEscat = prop.propagate(u0 = psfE[0,:,:])
         #pro detection and rotate
-        psfDscatrot = propD.propagate(u0 = psfDgen[0,:,:])
-        psfD = bf.rotPSF(psfDgen, optDet.angle)
-        psfDscat = bf.rotPSF(psfDscatrot, optDet.angle)
+        # psfDscatrot = propD.propagate(u0 = psfDgen[0,:,:])
+        # psfD = bf.rotPSF(psfDgen, optDet.angle)
+        # psfDscat = bf.rotPSF(psfDscatrot, optDet.angle)
+        psfDscat = propD.propagate(u0 = psfDgen[0,:,:])
+        psfDscat = bf.rotPSF(psfDscat, optDet.angle)
 
         #Efield = prop.propagate(propVol, p_source="gauss")
         
@@ -202,9 +241,15 @@ for i in range(xSteps):
         voxS = optExc.dx
         voxSfft = 1/(optExc.Nx * optExc.dx)
         
-        bf.plot_max_projections(abs(psfS)**2, voxel_size=(voxS, voxS, voxS), title="PSF system - Max Projections")
-        bf.plot_max_projections(abs(psfEscat)*2, voxel_size=(voxS, voxS, voxS), title="PSF excitation - Max Projections")
-        bf.plot_max_projections(abs(psfDscat)**2, voxel_size=(voxS, voxS, voxS), title="PSF detection - Max Projections")
+        plt.imshow(shifted_vol[256, :, :])
+        plt.imshow(np.max(shifted_vol,0))
+        plt.imshow(shifted_vol[:, 256, :])
+        plt.imshow(np.max(shifted_vol,1))
+        plt.imshow(shifted_vol[:, :, 256])
+        plt.imshow(np.max(shifted_vol,2))
+        #bf.plot_max_projections(abs(psfS)**2, voxel_size=(voxS, voxS, voxS), title="PSF system - Max Projections")
+        #bf.plot_max_projections(abs(psfEscat)*2, voxel_size=(voxS, voxS, voxS), title="PSF excitation - Max Projections")
+        #bf.plot_max_projections(abs(psfDscat)**2, voxel_size=(voxS, voxS, voxS), title="PSF detection - Max Projections")
         bf.plot_max_projections(psSinc, voxel_size=(voxSfft, voxSfft, voxSfft), title="PS system - Max Projections")
         
         # gen and save 2D histo
@@ -222,21 +267,21 @@ for i in range(xSteps):
     print("... xstep")
     print(xSteps)
 
-#%% check psfs and psS
-psSs= abs(fftshift(fftn(psfD *psfE)))**2
-bf.plot_max_projections(psSs, voxel_size=(voxSfft, voxSfft, voxSfft), title="PS system - Max Projections")
-psE= abs(fftshift(fftn(psfE)))**2
-bf.plot_max_projections(psE, voxel_size=(voxSfft, voxSfft, voxSfft), title="PS excitation - Max Projections")
-psD= abs(fftshift(fftn(psfD)))**2
-bf.plot_max_projections(psD, voxel_size=(voxSfft, voxSfft, voxSfft), title="PS detection - Max Projections")
-psEscat= abs(fftshift(fftn(psfEscat)))**2
-bf.plot_max_projections(psEscat, voxel_size=(voxSfft, voxSfft, voxSfft), title="PS excitation scat - Max Projections")
-psDscat= abs(fftshift(fftn(psfDscat)))**2
-bf.plot_max_projections(psDscat, voxel_size=(voxSfft, voxSfft, voxSfft), title="PS detection scat - Max Projections")
+# #%% check psfs and psS
+# psSs= abs(fftshift(fftn(psfD *psfE)))**2
+# bf.plot_max_projections(psSs, voxel_size=(voxSfft, voxSfft, voxSfft), title="PS system - Max Projections")
+# psE= abs(fftshift(fftn(psfE)))**2
+# bf.plot_max_projections(psE, voxel_size=(voxSfft, voxSfft, voxSfft), title="PS excitation - Max Projections")
+# psD= abs(fftshift(fftn(psfD)))**2
+# bf.plot_max_projections(psD, voxel_size=(voxSfft, voxSfft, voxSfft), title="PS detection - Max Projections")
+# psEscat= abs(fftshift(fftn(psfEscat)))**2
+# bf.plot_max_projections(psEscat, voxel_size=(voxSfft, voxSfft, voxSfft), title="PS excitation scat - Max Projections")
+# psDscat= abs(fftshift(fftn(psfDscat)))**2
+# bf.plot_max_projections(psDscat, voxel_size=(voxSfft, voxSfft, voxSfft), title="PS detection scat - Max Projections")
 
-com_tSinc_2D1, com_pSinc_2D1 = bf.calc2Dhisto(theta, phi, psSs, filename, "systemIncoh", path)
-print(com_tSinc_2D1, com_pSinc_2D1)
-print(com_tSinc_2D, com_pSinc_2D)
+# com_tSinc_2D1, com_pSinc_2D1 = bf.calc2Dhisto(theta, phi, psSs, filename, "systemIncoh", path)
+# print(com_tSinc_2D1, com_pSinc_2D1)
+# print(com_tSinc_2D, com_pSinc_2D)
 #%%
 x_resolution = 1 / (scatDim / 10000)
 y_resolution = 1 / (scatDim / 10000)

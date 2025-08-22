@@ -6,6 +6,7 @@ import brilloFunctions as bf
 import biobeam as bb
 import matplotlib.pyplot as plt
 from skimage.morphology import ball
+from scipy.ndimage import zoom
 from numpy.fft import fftn, fftshift, fftfreq
 os.environ["PYOPENCL_COMPILER_OUTPUT"] = "0"  # deaktiviert Ausgabe komplett
 # %% set parameters
@@ -135,6 +136,8 @@ bf.plot_max_projections(psEscat, voxel_size=(voxSfft, voxSfft, voxSfft), title="
 psD= abs(fftshift(fftn(psfD)))**2
 bf.plot_max_projections(psD, voxel_size=(voxSfft, voxSfft, voxSfft), title="PS detection - Max Projections")
 psDscat= abs(fftshift(fftn(psfDscat)))**2
+scale = (1.33, 1.33, 1.33)
+psDscat = zoom(psDscat, zoom=scale, order=3)
 bf.plot_max_projections(psDscat, voxel_size=(voxSfft, voxSfft, voxSfft), title="PS detection scat - Max Projections")
 
 com_tSinc_2D, com_pSinc_2D = bf.calc2Dhisto(theta, phi, psS, filename, "systemIncoh", path)
