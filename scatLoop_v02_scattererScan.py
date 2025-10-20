@@ -9,18 +9,20 @@ import matplotlib.pyplot as plt
 from numpy.fft import fftn, fftshift, fftfreq
 from scipy.ndimage import center_of_mass
 from scipy.ndimage import zoom
+import arrayfire as af
+af.device_gc()
 os.environ["PYOPENCL_COMPILER_OUTPUT"] = "0"  # deaktiviert Ausgabe komplett
 # %% set parameters
 s = time.time()
 
 optExc = SimpleNamespace()
-optExc.Nx = 512
+optExc.Nx = 768
 optExc.Ny = optExc.Nx
 optExc.Nz = optExc.Nx
-optExc.dx = 0.075
+optExc.dx = 0.05
 optExc.dy = optExc.dx
 optExc.dz = optExc.dx
-optExc.NA = 0.4
+optExc.NA = 0.2
 optExc.n0 = 1.33
 optExc.lam = 0.532
 
@@ -31,10 +33,10 @@ optDet.Nz = optDet.Nx
 optDet.dx = optExc.dx
 optDet.dy = optDet.dx
 optDet.dz = optDet.dx
-optDet.NA = 0.4
+optDet.NA = 0.8
 optDet.n0 = optExc.n0
 optDet.lam = 0.580
-optDet.angle = 90
+optDet.angle = 00
 
 # check if pixelsize smaller than Nyquist 
 dxExc = optExc.lam/2/optExc.NA
@@ -48,7 +50,7 @@ dxDet = optDet.lam/2/optDet.NA
 if np.min([dxDet, dxExc]) <= optExc.dx:
     print('..........................Warning ...................................... -> K-Space not Nyquist sampled for choosen NA and dx.')
 #%%
-mainPath = "C:\\Users\\Goerlitz\\Documents\\temp\\20250729_scaScatt_512\\"
+mainPath = "C:\\Users\\Goerlitz\\Documents\\temp\\16x16_512_0deg\\"
 
 # scatPath = 'C:\\Users\\Goerlitz\\Documents\\temp\\Tabea_mouseembryo_001_512.tif'
 # scatVol1 = tiff.imread(scatPath)/10000
@@ -91,7 +93,7 @@ vol = create_sphere_with_gaussian_noise(shape=(optExc.Nx, optExc.Nx, optExc.Nx),
 
 padded_scatVol = np.random.normal(1.33, 0.01, size=(vol.shape[0]*3, vol.shape[1]*3, vol.shape[2]*3))
 
-# Shapes
+# Shapes 
 sz, sy, sx = vol.shape
 Z, Y, X = padded_scatVol.shape
 
@@ -114,158 +116,287 @@ psfE, psfDgen, theta, phi, bins, angles_rad, sexy, kxy = bf.prepPara(optExc, opt
 print("... prepared PSFs")
 
 #%%
+
+xsteps = 16
+xrange = 512
+xstepSize = round(xrange/(xsteps - 1))
+xrange = 0 if xsteps == 1 else xrange
+xstepSize = 0 if xsteps == 1 else round(xrange / (xsteps - 1))
+
+ysteps = xsteps
+yrange = xrange
+yrange = 0 if ysteps == 1 else yrange
+ystepSize = 0 if ysteps == 1 else round(yrange / (ysteps - 1))
+
+zsteps = 1
+zrange = xrange
+zrange = 0 if zsteps == 1 else zrange
+zstepSize = 0 if zsteps == 1 else round(zrange / (zsteps - 1))
+
+dTheta = np.zeros((xsteps, ysteps, zsteps))
+dPhi = np.zeros((xsteps, ysteps, zsteps))
+
+for i in range(xsteps):
+    start_x = round(sx - xrange/2) + i * xstepSize
+    end_x   = start_x + sx
+    for j in range(ysteps):
+        start_y = round(sy - yrange/2) + j * ystepSize 
+        end_y   = start_y + sy
+        for w in range(zsteps):
+            start_z = round(sz - zrange/2) + w * zstepSize
+            end_z   = start_z + sz
+            shifted_vol = padded_scatVol[start_z:end_z, start_y:end_y, start_x:end_x]
+            shifted_vol2 = padded_scatVol[start_z:end_z, start_x:end_x, start_y:end_y]
+            pp = (i+1)*(j+1)*(w+1)/(xsteps*ysteps*zsteps)
+            print("Process: ", pp, "xSteps: ", i, "ySteps: ", j)
+            start = time.time()
+
+            
+            
+            filename = f"shiftVol_x{i:02d}_y{j:02d}"
+            # def make_unique_folder(path):
+            #     base_path = path
+            #     i = 1
+            #     while os.path.exists(path):
+            #         path = f"{base_path}_{i}"
+            #         i += 1
+            #     os.makedirs(path)
+            #     return path
+
+            # # Beispiel
+            # mainPath = make_unique_folder(mainPath)
+            path = mainPath + f"shiftVol_x{i:02d}_y{j:02d}" 
+            #os.makedirs(path)
+            # def make_unique_folder(path):
+            #     base_path = path
+            #     i = 1
+            #     while os.path.exists(path):
+            #         path = f"{base_path}_{i}"
+            #         i += 1
+            #     os.makedirs(path)
+            #     return path
+
+            # Beispiel
+            # path = make_unique_folder(path)
+            
+            path = path + "\\"
+            
+            # propagator
+
+            # # Setup propagator excitation
+            # prop = bb.Bpm3d(dn=vol, units = (optDet.dx,)*3, lam=optExc.lam/optExc.n0)
+            # propVol = np.asarray(vol, dtype=np.complex64)
+
+            # # setup propagator detection, after rotation
+            # scatVolrot = bf.rotPSF(vol, -optDet.angle)
+            # propD = bb.Bpm3d(dn=scatVolrot, units = (optDet.dx,)*3, lam=optDet.lam/optExc.n0)
+            # propVolrot = np.asarray(scatVolrot, dtype=np.complex64)
+
+
+            # # prop excitation 
+            # psfEscat = prop.propagate(u0 = psfE[0,:,:])
+            # #pro detection and rotate
+            # psfDscatrot = propD.propagate(u0 = psfDgen[0,:,:])
+            # psfD = bf.rotPSF(psfDgen, optDet.angle)
+            # psfDscat = bf.rotPSF(psfDscatrot, optDet.angle)
+
+
+            # %% propagator
+            
+            # Setup propagator excitation
+            prop = bb.Bpm3d(dn=shifted_vol, units = (optDet.dx,)*3, lam=optExc.lam/optExc.n0)
+            propVol = np.asarray(shifted_vol, dtype=np.complex64)
+            
+            # setup propagator detection, after rotation
+            # scatVolrot = bf.rotPSF(shifted_vol, -optDet.angle)
+            # propD = bb.Bpm3d(dn=scatVolrot, units = (optDet.dx,)*3, lam=optDet.lam/optExc.n0)
+            # propVolrot = np.asarray(scatVolrot, dtype=np.complex64)
+            propD = bb.Bpm3d(dn=shifted_vol2, units = (optDet.dx,)*3, lam=optDet.lam/optExc.n0)
+            
+            # prop excitation 
+            psfEscat = prop.propagate(u0 = psfE[0,:,:])
+            #pro detection and rotate
+            # psfDscatrot = propD.propagate(u0 = psfDgen[0,:,:])
+            # psfD = bf.rotPSF(psfDgen, optDet.angle)
+            # psfDscat = bf.rotPSF(psfDscatrot, optDet.angle)
+            psfDscat = propD.propagate(u0 = psfDgen[0,:,:])
+            psfDscat = bf.rotPSF(psfDscat, optDet.angle)
+
+            psfS = psfEscat * psfDscat
+            psSinc = bf.fftgpuPS(psfS) # power spectrum
+            comSinc = tuple(np.round(center_of_mass(psSinc)).astype(int))
+            ts1inc = theta[comSinc]
+            ps1inc = phi[comSinc]
+            
+            voxS = optExc.dx
+            voxSfft = 1/(optExc.Nx * optExc.dx)
+            
+            # bf.plot_max_projections(abs(psfEscat)*2, voxel_size=(voxS, voxS, voxS), title="PSF excitation - Max Projections")
+            # bf.plot_max_projections(abs(psfDscat)**2, voxel_size=(voxS, voxS, voxS), title="PSF detection - Max Projections")
+                     
+            # bf.plot_max_projections(psSinc, voxel_size=(voxSfft, voxSfft, voxSfft), title="PS system - Max Projections")
+
+            # gen and save 2D histo
+            com_tSinc_2D, com_pSinc_2D = bf.calc2Dhisto(theta, phi, psSinc, filename, "systemIncoh", path)
+            print(com_tSinc_2D, com_pSinc_2D)
+            # save into array
+            dTheta[i, j, w] = com_tSinc_2D
+            dPhi[i, j, w] = com_pSinc_2D
+            end = time.time()
+            print("Elapsed time:", end - start, "seconds")
+
 scatDim = optExc.dx
 
 
-xSize = 20/optDet.dx
-ySize = xSize
+# xSize = 20/optDet.dx
+# ySize = xSize
 
-xSteps = 3
-ySteps = 1
+# xSteps = 3
+# ySteps = 1
 
-xStepsSize = round(xSize/xSteps)
-yStepsSize = xStepsSize
+# xStepsSize = round(xSize/xSteps)
+# yStepsSize = xStepsSize
 
 
-xstart = round(X/2 -  xSize/2)
-zstart = round(Z/2)
+# xstart = round(X/2 -  xSize/2)
+# zstart = round(Z/2)
 
-dTheta = np.zeros((xSteps, ySteps))
-dPhi = np.zeros((xSteps, ySteps))
+# dTheta = np.zeros((xSteps, ySteps))
+# dPhi = np.zeros((xSteps, ySteps))
 
-for i in range(xSteps):
+# for i in range(xSteps):
     
-    ystart = round(Y/2 -  ySize/2)
-    for j in range(ySteps):
+#     ystart = round(Y/2 -  ySize/2)
+#     for j in range(ySteps):
         
-        # shift volume
+#         # shift volume
         
-        if xSteps == 1 and ySteps == 1:
-            shifted_vol = vol
-        else:
-            shifted_vol = padded_scatVol[
-            xstart:xstart + sx,
-            zstart:zstart + sz,
-            ystart:ystart + sy]
-        print(xstart, ystart, zstart)
-        filename = f"shiftVol_x{i:02d}_y{j:02d}"
-        path = mainPath + f"shiftVol_x{i:02d}_y{j:02d}" 
-        #os.makedirs(path)
-        def make_unique_folder(path):
-            base_path = path
-            i = 1
-            while os.path.exists(path):
-                path = f"{base_path}_{i}"
-                i += 1
-            os.makedirs(path)
-            return path
+#         if xSteps == 1 and ySteps == 1:
+#             shifted_vol = vol
+#         else:
+#             shifted_vol = padded_scatVol[
+#             xstart:xstart + sx,
+#             zstart:zstart + sz,
+#             ystart:ystart + sy]
+#         print(xstart, ystart, zstart)
+#         filename = f"shiftVol_x{i:02d}_y{j:02d}"
+#         path = mainPath + f"shiftVol_x{i:02d}_y{j:02d}" 
+#         #os.makedirs(path)
+#         def make_unique_folder(path):
+#             base_path = path
+#             i = 1
+#             while os.path.exists(path):
+#                 path = f"{base_path}_{i}"
+#                 i += 1
+#             os.makedirs(path)
+#             return path
 
-        # Beispiel
-        path = make_unique_folder(path)
+#         # Beispiel
+#         path = make_unique_folder(path)
         
-        path = path + "\\"
+#         path = path + "\\"
         
-        # propagator
+#         # propagator
 
-        # # Setup propagator excitation
-        # prop = bb.Bpm3d(dn=vol, units = (optDet.dx,)*3, lam=optExc.lam/optExc.n0)
-        # propVol = np.asarray(vol, dtype=np.complex64)
+#         # # Setup propagator excitation
+#         # prop = bb.Bpm3d(dn=vol, units = (optDet.dx,)*3, lam=optExc.lam/optExc.n0)
+#         # propVol = np.asarray(vol, dtype=np.complex64)
 
-        # # setup propagator detection, after rotation
-        # scatVolrot = bf.rotPSF(vol, -optDet.angle)
-        # propD = bb.Bpm3d(dn=scatVolrot, units = (optDet.dx,)*3, lam=optDet.lam/optExc.n0)
-        # propVolrot = np.asarray(scatVolrot, dtype=np.complex64)
-
-
-        # # prop excitation 
-        # psfEscat = prop.propagate(u0 = psfE[0,:,:])
-        # #pro detection and rotate
-        # psfDscatrot = propD.propagate(u0 = psfDgen[0,:,:])
-        # psfD = bf.rotPSF(psfDgen, optDet.angle)
-        # psfDscat = bf.rotPSF(psfDscatrot, optDet.angle)
+#         # # setup propagator detection, after rotation
+#         # scatVolrot = bf.rotPSF(vol, -optDet.angle)
+#         # propD = bb.Bpm3d(dn=scatVolrot, units = (optDet.dx,)*3, lam=optDet.lam/optExc.n0)
+#         # propVolrot = np.asarray(scatVolrot, dtype=np.complex64)
 
 
-        # %% propagator
-        
-        # Setup propagator excitation
-        prop = bb.Bpm3d(dn=shifted_vol, units = (optDet.dx,)*3, lam=optExc.lam/optExc.n0)
-        propVol = np.asarray(shifted_vol, dtype=np.complex64)
-        
-        # setup propagator detection, after rotation
-        # scatVolrot = bf.rotPSF(shifted_vol, -optDet.angle)
-        # propD = bb.Bpm3d(dn=scatVolrot, units = (optDet.dx,)*3, lam=optDet.lam/optExc.n0)
-        # propVolrot = np.asarray(scatVolrot, dtype=np.complex64)
-        propD = bb.Bpm3d(dn=shifted_vol, units = (optDet.dx,)*3, lam=optDet.lam/optExc.n0)
-        
-        # prop excitation 
-        psfEscat = prop.propagate(u0 = psfE[0,:,:])
-        #pro detection and rotate
-        # psfDscatrot = propD.propagate(u0 = psfDgen[0,:,:])
-        # psfD = bf.rotPSF(psfDgen, optDet.angle)
-        # psfDscat = bf.rotPSF(psfDscatrot, optDet.angle)
-        psfDscat = propD.propagate(u0 = psfDgen[0,:,:])
-        psfDscat = bf.rotPSF(psfDscat, optDet.angle)
+#         # # prop excitation 
+#         # psfEscat = prop.propagate(u0 = psfE[0,:,:])
+#         # #pro detection and rotate
+#         # psfDscatrot = propD.propagate(u0 = psfDgen[0,:,:])
+#         # psfD = bf.rotPSF(psfDgen, optDet.angle)
+#         # psfDscat = bf.rotPSF(psfDscatrot, optDet.angle)
 
-        #Efield = prop.propagate(propVol, p_source="gauss")
-        
-        # #%% propagator
 
-        # # Setup propagator excitation
-        # prop = bb.Bpm3d(dn=shifted_vol, units = (scatDim,)*3, lam=optExc.lam)
-        # propVol = np.asarray(shifted_vol, dtype=np.complex64)
+#         # %% propagator
+        
+#         # Setup propagator excitation
+#         prop = bb.Bpm3d(dn=shifted_vol, units = (optDet.dx,)*3, lam=optExc.lam/optExc.n0)
+#         propVol = np.asarray(shifted_vol, dtype=np.complex64)
+        
+#         # setup propagator detection, after rotation
+#         # scatVolrot = bf.rotPSF(shifted_vol, -optDet.angle)
+#         # propD = bb.Bpm3d(dn=scatVolrot, units = (optDet.dx,)*3, lam=optDet.lam/optExc.n0)
+#         # propVolrot = np.asarray(scatVolrot, dtype=np.complex64)
+#         propD = bb.Bpm3d(dn=shifted_vol, units = (optDet.dx,)*3, lam=optDet.lam/optExc.n0)
+        
+#         # prop excitation 
+#         psfEscat = prop.propagate(u0 = psfE[0,:,:])
+#         #pro detection and rotate
+#         # psfDscatrot = propD.propagate(u0 = psfDgen[0,:,:])
+#         # psfD = bf.rotPSF(psfDgen, optDet.angle)
+#         # psfDscat = bf.rotPSF(psfDscatrot, optDet.angle)
+#         psfDscat = propD.propagate(u0 = psfDgen[0,:,:])
+#         psfDscat = bf.rotPSF(psfDscat, optDet.angle)
 
-        # # setup propagator detection, after rotation
-        # scatVolrot = bf.rotPSF(shifted_vol, -optDet.angle)
-        # propD = bb.Bpm3d(dn=scatVolrot, units = (scatDim,)*3, lam=optDet.lam)
-        # propVolrot = np.asarray(scatVolrot, dtype=np.complex64)
+#         #Efield = prop.propagate(propVol, p_source="gauss")
         
-        # # %% propagate
-        # # prop excitation 
-        # psfEscat = prop.propagate(propVol, E_in=psfE[0,:,:])
-        # #pro detection and rotate
-        # psfDscatrot = propD.propagate(propVolrot, E_in=psfDgen[0,:,:])
-        # psfD = bf.rotPSF(psfDgen, optDet.angle)
-        # psfDscat = bf.rotPSF(psfDscatrot, optDet.angle)
+#         # #%% propagator
+
+#         # # Setup propagator excitation
+#         # prop = bb.Bpm3d(dn=shifted_vol, units = (scatDim,)*3, lam=optExc.lam)
+#         # propVol = np.asarray(shifted_vol, dtype=np.complex64)
+
+#         # # setup propagator detection, after rotation
+#         # scatVolrot = bf.rotPSF(shifted_vol, -optDet.angle)
+#         # propD = bb.Bpm3d(dn=scatVolrot, units = (scatDim,)*3, lam=optDet.lam)
+#         # propVolrot = np.asarray(scatVolrot, dtype=np.complex64)
         
-        # calc power spectrum and center of mass
-        # psSinc, com_tSinc_1D, com_pSinc_1D = bf.calcPScomInc(psfEscat, psfDscat, theta, phi)
+#         # # %% propagate
+#         # # prop excitation 
+#         # psfEscat = prop.propagate(propVol, E_in=psfE[0,:,:])
+#         # #pro detection and rotate
+#         # psfDscatrot = propD.propagate(propVolrot, E_in=psfDgen[0,:,:])
+#         # psfD = bf.rotPSF(psfDgen, optDet.angle)
+#         # psfDscat = bf.rotPSF(psfDscatrot, optDet.angle)
         
-        # calc system PSF and PS
-        psfS = psfEscat * psfDscat
-        otfSincoh = fftshift(fftn(psfS)) # coherent OTF
-        psSinc = np.abs(otfSincoh) ** 2 # power spectrum
-        comSinc = tuple(np.round(center_of_mass(psSinc)).astype(int))
-        ts1inc = theta[comSinc]
-        ps1inc = phi[comSinc]
+#         # calc power spectrum and center of mass
+#         # psSinc, com_tSinc_1D, com_pSinc_1D = bf.calcPScomInc(psfEscat, psfDscat, theta, phi)
         
-        voxS = optExc.dx
-        voxSfft = 1/(optExc.Nx * optExc.dx)
+#         # calc system PSF and PS
+#         psfS = psfEscat * psfDscat
+#         otfSincoh = fftshift(fftn(psfS)) # coherent OTF
+#         psSinc = np.abs(otfSincoh) ** 2 # power spectrum
+#         comSinc = tuple(np.round(center_of_mass(psSinc)).astype(int))
+#         ts1inc = theta[comSinc]
+#         ps1inc = phi[comSinc]
         
-        plt.imshow(shifted_vol[256, :, :])
-        plt.imshow(np.max(shifted_vol,0))
-        plt.imshow(shifted_vol[:, 256, :])
-        plt.imshow(np.max(shifted_vol,1))
-        plt.imshow(shifted_vol[:, :, 256])
-        plt.imshow(np.max(shifted_vol,2))
-        #bf.plot_max_projections(abs(psfS)**2, voxel_size=(voxS, voxS, voxS), title="PSF system - Max Projections")
-        #bf.plot_max_projections(abs(psfEscat)*2, voxel_size=(voxS, voxS, voxS), title="PSF excitation - Max Projections")
-        #bf.plot_max_projections(abs(psfDscat)**2, voxel_size=(voxS, voxS, voxS), title="PSF detection - Max Projections")
-        bf.plot_max_projections(psSinc, voxel_size=(voxSfft, voxSfft, voxSfft), title="PS system - Max Projections")
+#         voxS = optExc.dx
+#         voxSfft = 1/(optExc.Nx * optExc.dx)
         
-        # gen and save 2D histo
-        com_tSinc_2D, com_pSinc_2D = bf.calc2Dhisto(theta, phi, psSinc, filename, "systemIncoh", path)
-        print(com_tSinc_2D, com_pSinc_2D)
-        # save into array
-        dTheta[i,j] = com_tSinc_2D
-        dPhi[i,j] = com_pSinc_2D
+#         plt.imshow(shifted_vol[256, :, :])
+#         plt.imshow(np.max(shifted_vol,0))
+#         plt.imshow(shifted_vol[:, 256, :])
+#         plt.imshow(np.max(shifted_vol,1))
+#         plt.imshow(shifted_vol[:, :, 256])
+#         plt.imshow(np.max(shifted_vol,2))
+#         #bf.plot_max_projections(abs(psfS)**2, voxel_size=(voxS, voxS, voxS), title="PSF system - Max Projections")
+#         #bf.plot_max_projections(abs(psfEscat)*2, voxel_size=(voxS, voxS, voxS), title="PSF excitation - Max Projections")
+#         #bf.plot_max_projections(abs(psfDscat)**2, voxel_size=(voxS, voxS, voxS), title="PSF detection - Max Projections")
+#         bf.plot_max_projections(psSinc, voxel_size=(voxSfft, voxSfft, voxSfft), title="PS system - Max Projections")
         
-        # shift 
-        ystart = round(ystart + yStepsSize) 
-        print("... ystep")
-        print(ySteps)
-    xstart = round(xstart + xStepsSize)
-    print("... xstep")
-    print(xSteps)
+#         # gen and save 2D histo
+#         com_tSinc_2D, com_pSinc_2D = bf.calc2Dhisto(theta, phi, psSinc, filename, "systemIncoh", path)
+#         print(com_tSinc_2D, com_pSinc_2D)
+#         # save into array
+#         dTheta[i,j] = com_tSinc_2D
+#         dPhi[i,j] = com_pSinc_2D
+        
+#         # shift 
+#         ystart = round(ystart + yStepsSize) 
+#         print("... ystep")
+#         print(ySteps)
+#     xstart = round(xstart + xStepsSize)
+#     print("... xstep")
+#     print(xSteps)
 
 # #%% check psfs and psS
 # psSs= abs(fftshift(fftn(psfD *psfE)))**2
@@ -282,13 +413,14 @@ for i in range(xSteps):
 # com_tSinc_2D1, com_pSinc_2D1 = bf.calc2Dhisto(theta, phi, psSs, filename, "systemIncoh", path)
 # print(com_tSinc_2D1, com_pSinc_2D1)
 # print(com_tSinc_2D, com_pSinc_2D)
-#%%
+#%
 x_resolution = 1 / (scatDim / 10000)
 y_resolution = 1 / (scatDim / 10000)
-
+thSave = dTheta[:,:,0]
+phSave = dPhi[:,:,0]
 # Save
 filename2 = mainPath + 'dTheta.tiff'
-np.savetxt(mainPath + "dTheta.txt", dTheta, fmt="%.5f", delimiter="\t")
+np.savetxt(mainPath + "dTheta.txt", thSave, fmt="%.5f", delimiter="\t")
 tiff.imwrite(
     filename2,
     dTheta.astype(np.float32),
@@ -301,7 +433,7 @@ tiff.imwrite(
     )
 
 filename2 = mainPath + 'dPhi.tiff'
-np.savetxt(mainPath + "dPhi.txt", dPhi, fmt="%.5f", delimiter="\t")
+np.savetxt(mainPath + "dPhi.txt", phSave, fmt="%.5f", delimiter="\t")
 tiff.imwrite(
     filename2,
     dPhi.astype(np.float32),
@@ -316,60 +448,60 @@ tiff.imwrite(
 #%%
 # Example volumes (replace these with your actual arrays)
 # psfE and propVol should be 3D NumPy arrays: (z, y, x)
-p1 = abs(psfEscat.T)**2
-p2 = abs(psfDscat.T)**2
-p3 = abs(psfS.T)**2
-dx = dy = dz = 0.23  # micrometers
+# p1 = abs(psfEscat.T)**2
+# p2 = abs(psfDscat.T)**2
+# p3 = abs(psfS.T)**2
+# dx = dy = dz = 0.23  # micrometers
 
-def get_projections(volume):
-    # Assuming volume shape is (Z, Y, X)
-    mip_xy = np.max(volume, axis=0)  # Projection along Z
-    mip_xz = np.max(volume, axis=1)  # Projection along Y
-    mip_yz = np.rot90(np.max(volume, axis=2), k=3)  # Projection along X
-    return mip_xy, mip_xz, mip_yz
+# def get_projections(volume):
+#     # Assuming volume shape is (Z, Y, X)
+#     mip_xy = np.max(volume, axis=0)  # Projection along Z
+#     mip_xz = np.max(volume, axis=1)  # Projection along Y
+#     mip_yz = np.rot90(np.max(volume, axis=2), k=3)  # Projection along X
+#     return mip_xy, mip_xz, mip_yz
 
-psfE_xy, psfE_xz, psfE_yz = get_projections(p1)
-propVol_xy, propVol_xz, propVol_yz = get_projections(p3)
-psfD_xy, psfD_xz, psfD_yz = get_projections(p2)
+# psfE_xy, psfE_xz, psfE_yz = get_projections(p1)
+# propVol_xy, propVol_xz, propVol_yz = get_projections(p3)
+# psfD_xy, psfD_xz, psfD_yz = get_projections(p2)
 
-# Axis scaling for correct pixel size
-z_size, y_size, x_size = psfE.shape
-extent_xy = [0, x_size*dx, 0, y_size*dy]
-extent_xz = [0, x_size*dx, 0, z_size*dz]
-extent_yz = [0, y_size*dy, 0, z_size*dz]
+# # Axis scaling for correct pixel size
+# z_size, y_size, x_size = psfE.shape
+# extent_xy = [0, x_size*dx, 0, y_size*dy]
+# extent_xz = [0, x_size*dx, 0, z_size*dz]
+# extent_yz = [0, y_size*dy, 0, z_size*dz]
 
-# Plotting
-fig, axes = plt.subplots(3, 3, figsize=(12, 8))
+# # Plotting
+# fig, axes = plt.subplots(3, 3, figsize=(12, 8))
 
-# PSF projections
-axes[0, 0].imshow(psfE_xy, extent=extent_xy, cmap='magma')
-axes[0, 0].set_title('psfE - XY')
-axes[0, 1].imshow(psfE_xz, extent=extent_xz, cmap='magma')
-axes[0, 1].set_title('psfE - XZ')
-axes[0, 2].imshow(psfE_yz, extent=extent_yz, cmap='magma')
-axes[0, 2].set_title('psfE - YZ')
+# # PSF projections
+# axes[0, 0].imshow(psfE_xy, extent=extent_xy, cmap='magma')
+# axes[0, 0].set_title('psfE - XY')
+# axes[0, 1].imshow(psfE_xz, extent=extent_xz, cmap='magma')
+# axes[0, 1].set_title('psfE - XZ')
+# axes[0, 2].imshow(psfE_yz, extent=extent_yz, cmap='magma')
+# axes[0, 2].set_title('psfE - YZ')
 
-axes[1, 0].imshow(psfD_xy, extent=extent_xy, cmap='magma')
-axes[1, 0].set_title('psfD - XY')
-axes[1, 1].imshow(psfD_xz, extent=extent_xz, cmap='magma')
-axes[1, 1].set_title('psfD - XZ')
-axes[1, 2].imshow(psfD_yz, extent=extent_yz, cmap='magma')
-axes[1, 2].set_title('psfD - YZ')
+# axes[1, 0].imshow(psfD_xy, extent=extent_xy, cmap='magma')
+# axes[1, 0].set_title('psfD - XY')
+# axes[1, 1].imshow(psfD_xz, extent=extent_xz, cmap='magma')
+# axes[1, 1].set_title('psfD - XZ')
+# axes[1, 2].imshow(psfD_yz, extent=extent_yz, cmap='magma')
+# axes[1, 2].set_title('psfD - YZ')
 
-# PropVol projections
-axes[2, 0].imshow(propVol_xy, extent=extent_xy, cmap='magma')
-axes[2, 0].set_title('propVol - XY')
-axes[2, 1].imshow(propVol_xz, extent=extent_xz, cmap='magma')
-axes[2, 1].set_title('propVol - XZ')
-axes[2, 2].imshow(propVol_yz, extent=extent_yz, cmap='magma')
-axes[2, 2].set_title('propVol - YZ')
+# # PropVol projections
+# axes[2, 0].imshow(propVol_xy, extent=extent_xy, cmap='magma')
+# axes[2, 0].set_title('propVol - XY')
+# axes[2, 1].imshow(propVol_xz, extent=extent_xz, cmap='magma')
+# axes[2, 1].set_title('propVol - XZ')
+# axes[2, 2].imshow(propVol_yz, extent=extent_yz, cmap='magma')
+# axes[2, 2].set_title('propVol - YZ')
 
-for ax in axes.ravel():
-    ax.set_xlabel('X (µm)' if 'XY' in ax.get_title() else 'Depth (µm)')
-    ax.set_ylabel('Y (µm)' if 'XY' in ax.get_title() else 'Depth (µm)')
+# for ax in axes.ravel():
+#     ax.set_xlabel('X (µm)' if 'XY' in ax.get_title() else 'Depth (µm)')
+#     ax.set_ylabel('Y (µm)' if 'XY' in ax.get_title() else 'Depth (µm)')
 
-plt.tight_layout()
-plt.show()
+# plt.tight_layout()
+# plt.show()
 # #Efield = prop.propagate(propVol, p_source="gauss")
 
 # #%% loop through angles

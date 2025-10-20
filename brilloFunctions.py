@@ -4,13 +4,12 @@ from numpy.fft import fftn, fftshift, fftfreq
 import matplotlib.pyplot as plt
 from scipy.ndimage import center_of_mass
 from scipy.ndimage import rotate
+import arrayfire as af
 import os
 os.environ["PYOPENCL_COMPILER_OUTPUT"] = "0"  # deaktiviert Ausgabe komplett
 
 
 def prepPara(optExc, optDet):
-    #s = time.time()
-    
     # calculate excitation PSF 
     _ ,exE,eyE,ezE = bb.focus_field_cylindrical(shape = (optExc.Nx, optExc.Ny, optExc.Nz), 
                                               units = (optExc.dx, optExc.dy, optExc.dz), 
@@ -25,7 +24,7 @@ def prepPara(optExc, optDet):
                             lam = optDet.lam, NA = optDet.NA, n0 = optDet.n0, 
                             return_all_fields = True, 
                             n_integration_steps = 100)
-    psfDgen = exDgen + eyDgen + ezDgen
+    psfD = exDgen + eyDgen + ezDgen
     
     #psfE = psfDgen
     
@@ -48,9 +47,32 @@ def prepPara(optExc, optDet):
     sexy = [-d, d, -d, d]
     kxy = [np.min(kx), np.max(kx), np.min(kx), np.max(kx)]
     
-    #e = time.time()
-    #print(f"Time - perpare vol and histo parameters : {e - s} s")
-    return psfE, psfDgen, theta, phi, bins, angles_rad, sexy, kxy
+    return psfE.astype(np.complex64), psfD.astype(np.complex64), theta.astype(np.float16), phi.astype(np.float16), bins, angles_rad, sexy, kxy
+    #return psfE, psfDgen, theta, phi, bins, angles_rad, sexy, kxy
+    
+
+def create_sphere_with_gaussian_noise(shape=(256, 256, 256),
+                                      n_background=1.33,
+                                      n_sphere=1.43,
+                                      radius=256,
+                                      noise_std=0.01,
+                                      center=None):
+    Z, Y, X = shape
+    if center is None:
+        center = (Z // 2, Y // 2, X // 2)
+
+    # Background
+    volume = np.full(shape, n_background, dtype=np.float16)
+
+    # Sphere
+    z, y, x = np.ogrid[:Z, :Y, :X]
+    dist = np.sqrt((z - center[0])**2 + (y - center[1])**2 + (x - center[2])**2)
+    volume[dist <= radius] = n_sphere
+
+    # Add Gaussian noise
+    volume += np.random.normal(0, noise_std, size=shape)
+    return volume.astype(np.float16)
+
 
 def rotPSF(psfDgen, angle):
     #s = time.time()
@@ -161,27 +183,27 @@ def calc2Dhisto(theta, phi, powSpec, angle, name, path):# Flatten all arrays to 
         theta_flat, phi_flat, bins=[theta_bins, phi_bins], weights=power_flat)
     
     # Plot the angular power distribution
-    plt.figure(figsize=(10, 5))
-    plt.imshow(
-        hist.T,
-        extent=[theta_bins[0], theta_bins[-1], phi_bins[0], phi_bins[-1]],
-        aspect='auto',
-        origin='lower',
-        cmap='inferno'
-    )
-    plt.xlabel('Polar angle θ [deg]')
-    plt.ylabel('Azimuthal angle φ [deg]')
-    plt.colorbar(label='Power')
-    if isinstance(angle, str):
-        plt.title('Angular Power Distribution' + "\n" + name +" / "+ angle)
-        plt.savefig(path + name + angle + "_angularPowerDistribution2D.png", dpi=300, bbox_inches='tight')
-        np.savetxt(path + name + angle + "_angularPowerDistribution2D.txt", hist, fmt='%.5f')
-    else:
-        plt.title('Angular Power Distribution' + "\n" + name +" / "+ f"angle : {angle:.2f}")
-        plt.savefig(path + name + f"_{angle:.2f}" + "_angularPowerDistribution2D.png", dpi=300, bbox_inches='tight')
-        np.savetxt(path + name + f"_{angle:.2f}" + "_angularPowerDistribution2D.txt", hist, fmt='%.5f')
-    #plt.show()
-    plt.close()
+    # plt.figure(figsize=(10, 5))
+    # plt.imshow(
+    #     hist.T,
+    #     extent=[theta_bins[0], theta_bins[-1], phi_bins[0], phi_bins[-1]],
+    #     aspect='auto',
+    #     origin='lower',
+    #     cmap='inferno'
+    # )
+    # plt.xlabel('Polar angle θ [deg]')
+    # plt.ylabel('Azimuthal angle φ [deg]')
+    # plt.colorbar(label='Power')
+    # if isinstance(angle, str):
+    #     plt.title('Angular Power Distribution' + "\n" + name +" / "+ angle)
+    #     plt.savefig(path + name + angle + "_angularPowerDistribution2D.png", dpi=300, bbox_inches='tight')
+    #     np.savetxt(path + name + angle + "_angularPowerDistribution2D.txt", hist, fmt='%.5f')
+    # else:
+    #     plt.title('Angular Power Distribution' + "\n" + name +" / "+ f"angle : {angle:.2f}")
+    #     plt.savefig(path + name + f"_{angle:.2f}" + "_angularPowerDistribution2D.png", dpi=300, bbox_inches='tight')
+    #     np.savetxt(path + name + f"_{angle:.2f}" + "_angularPowerDistribution2D.txt", hist, fmt='%.5f')
+    # #plt.show()
+    # plt.close()
     
     # 1. Get bin centersZ
     theta_centers = 0.5 * (theta_bins[:-1] + theta_bins[1:])  # shape (N_theta,)
@@ -221,6 +243,15 @@ def calc2Dhisto(theta, phi, powSpec, angle, name, path):# Flatten all arrays to 
     phi_com_deg = np.rad2deg(phi_com)
     
     return theta_com_deg, phi_com_deg
+
+def fftgpuPS(psf):
+    psfAF = af.to_array(psf.astype(np.complex64))  # FFT braucht komplexes Array
+    ps = np.abs(fftshift(af.fft3(psfAF, True)))**2
+    af.device_gc()
+    return ps
+
+def fftcpuPS(psf):
+    return np.abs(fftshift(fftn(psf)))**2
 
 def saveMaxProj(arr, ext, angle, name1, name2, path):
     a = np.abs(arr).T
@@ -398,9 +429,3 @@ def plot_max_projections(volume, voxel_size=(1.0, 1.0, 1.0), cmap='hot', title="
 
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     plt.show()
-
-    # # gen and save 1D histo
-    # psEH, beEH = bf.gen1Dhisto(theta, psE, bins, angle, "excitation", path)
-    # psDH, beDH = bf.gen1Dhisto(theta, psD, bins, angle, "detection", path)
-    # psShcoh, beSHc = bf.gen1Dhisto(theta, psScoh, bins, angle, "systemCoh", path)
-    # psShinc, beSHi = bf.gen1Dhisto(theta, psSinc, bins, angle, "systemInc", path)
