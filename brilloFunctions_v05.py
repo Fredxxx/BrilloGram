@@ -4,10 +4,15 @@ from numpy.fft import fftn, fftshift, fftfreq
 import matplotlib.pyplot as plt
 from scipy.ndimage import center_of_mass
 from scipy.ndimage import rotate
+import scipy.optimize as opt
 import arrayfire as af
 import os
-os.environ["PYOPENCL_COMPILER_OUTPUT"] = "0"  # deaktiviert Ausgabe komplett
+from types import SimpleNamespace
 import gc
+import tifffile as tiff
+os.environ["PYOPENCL_COMPILER_OUTPUT"] = "0"  # deaktiviert Ausgabe komplett
+
+
 
 def prepPara(optExc, optDet):
     # calculate excitation PSF 
@@ -66,8 +71,15 @@ def genPaddArray(sx, sy, sz, vol):
     padded_scatVol[start_z:end_z, start_y:end_y, start_x:end_x] = vol
     return padded_scatVol
     
-def process_shift(coo, sx, sy, sz, padded_scatVol, psfE, psfDgen, optExc, optDet, mainPath, theta, phi, i, j, w):
+def process_shift(coo, padded_scatVol, psfE, psfDgen, optExc, optDet, mainPath, theta, phi, i, j, w):
+   
+    # prepare
    print(f" working on i={i}, j={j}")
+   sx = round((coo[0]+coo[1])/2)
+   sy = round((coo[2]+coo[3])/2)
+   sz = round((coo[4]+coo[5])/2)
+   name = "sx" + num2Str0000(sx) + "_sy" + num2Str0000(sy) + "_sz" + num2Str0000(sz)
+   res = SimpleNamespace()
    
    # Excitation: shift volume, init propagator and propagate
    t = padded_scatVol[coo[4]:coo[5], coo[2]:coo[3], coo[0]:coo[1]]
@@ -85,36 +97,49 @@ def process_shift(coo, sx, sy, sz, padded_scatVol, psfE, psfDgen, optExc, optDet
    del t
    gc.collect()
    
-   #  powerspectrum 
+   # Powerspectrum 
    psfS = psfEscat * psfDscat
    psfS = fftgpuPS(psfS)
    
-   #center of mass
-   try:
-       comSinc = tuple(np.round(center_of_mass(psfS)).astype(int))
-       ts1inc = theta[comSinc]
-       ps1inc = phi[comSinc]
-   except IndexError as e:
-       print("IndexError:", e)
-       print("comSinc =", comSinc)
-       print("theta.shape =", theta.shape, "phi.shape =", phi.shape, "psfS.shape =", psfS.shape, "psfEscat.shape =", psfEscat.shape)
-       if hasattr(comSinc, "max"):
-           print("comSinc.min =", comSinc.min(), "comSinc.max =", comSinc.max())
-       raise
+   # Calc results
+   res.comSinc, res.thetaCOM, res.phiCOM, res.sigX, res.sigY = calcRes(theta, phi, psfS, str(optDet.angle), name, mainPath)
+   res.x = i
+   res.y = j
+   res.z = w
    
-   # spread of angles
-       
-   
-   # save 2D histogram as txt
-
-    
+   # delete, not really necessary anymore?!
    del psfS
    del psfDscat
    del psfEscat
    gc.collect()
-    # Return results
-   return i, j, w, ts1inc, ps1inc
- 
+   # Return results
+   return res
+
+def num2Str0000(num):
+    s = str(abs(num))
+    sl = len(s)
+    if sl == 1:
+        s = "000" + s
+    elif sl == 2:
+        s = "00" + s  
+    elif sl == 3:
+        s = "0" + s     
+    return s
+
+
+def saveDist(path, name, data, xRes, yRes, scatDim):
+    np.savetxt(path + name + ".txt", data, fmt="%.5f", delimiter="\t")
+    tiff.imwrite(
+        path + name + '.tiff',
+        data.astype(np.float32),
+        imagej=True,
+        resolution=(xRes, yRes),
+        metadata={
+            'spacing': scatDim,    # Z voxel size
+            'unit': 'um'      # physical unit
+        }
+        )
+
 def create_sphere_with_gaussian_noise(shape=(256, 256, 256),
                                       n_background=1.33,
                                       n_sphere=1.43,
@@ -232,13 +257,34 @@ def gen1Dhisto(theta, psS, bins, angle, name, path):
     plt.close()
     return histT, binEdge
 
+def gauss2D(xy, amplitude, xo, yo, sigma_x, sigma_y, offset):
+    x, y = xy
+    xo = float(xo)
+    yo = float(yo)    
+    g = offset + amplitude*np.exp(-((x-xo)**2 + 2*(x-xo)*(y-yo) + (y-yo)**2))
+    return g.ravel()
+
 def calcRes(theta, phi, powSpec, angle, name, path):# Flatten all arrays to 1D
-    # center of mass    
+    # center of mass  
+    # try:
+    #     comSinc = tuple(np.round(center_of_mass(psfS)).astype(int))
+    #     ts1inc = theta[comSinc]
+    #     ps1inc = phi[comSinc]
+    # except IndexError as e:
+    #     print("IndexError:", e)
+    #     print("comSinc =", comSinc)
+    #     print("theta.shape =", theta.shape, "phi.shape =", phi.shape, "psfS.shape =", psfS.shape, "psfEscat.shape =", psfEscat.shape)
+    #     if hasattr(comSinc, "max"):
+    #         print("comSinc.min =", comSinc.min(), "comSinc.max =", comSinc.max())
+    #     raise
+    
+    # calc COM
     comSinc = tuple(np.round(center_of_mass(powSpec)).astype(int))
     thetaCOM = theta[comSinc]
     phiCOM = phi[comSinc]
-       
-       
+
+    
+    # spread of angles   
     theta_flat = theta.ravel()
     phi_flat = phi.ravel()
     power_flat = powSpec.ravel()
@@ -251,7 +297,7 @@ def calcRes(theta, phi, powSpec, angle, name, path):# Flatten all arrays to 1D
     hist, theta_edges, phi_edges = np.histogram2d(
         theta_flat, phi_flat, bins=[theta_bins, phi_bins], weights=power_flat)
     
-    # Plot the angular power distribution
+    # Plot/save the angular power distribution
     plt.figure(figsize=(10, 5))
     plt.imshow(
         hist.T,
@@ -265,16 +311,29 @@ def calcRes(theta, phi, powSpec, angle, name, path):# Flatten all arrays to 1D
     plt.colorbar(label='Power')
         
     plt.title('psHist' + "\n" + name +" / "+ angle)  
-    plt.savefig(path + name + angle + "_angularPowerDistribution2D.png", dpi=300, bbox_inches='tight')
-    np.savetxt(path + name + angle + "_angularPowerDistribution2D.txt", hist, fmt='%.5f')
+    plt.savefig(path + name + "_deg" + angle + ".png", dpi=300, bbox_inches='tight')
+    np.savetxt(path + name + "_deg" + angle + ".txt", hist, fmt='%.5f')
     
-    #plt.show()
+    plt.show()
     plt.close()
+        
+    # calc sigma
+    # Create x and y indices
+    theta_centers = (theta_edges[:-1] + theta_edges[1:]) / 2
+    phi_centers   = (phi_edges[:-1] + phi_edges[1:]) / 2
+    theta_grid, phi_grid = np.meshgrid(theta_centers, phi_centers, indexing='ij')
+    # fit
+    ydata = hist.ravel() 
+    initial_guess = (np.max(ydata), thetaCOM, phiCOM, 1, 1, np.min(ydata))  
+    bounds = ([0, theta_centers[0], phi_centers[0], 0, 0, 0],
+          [np.inf, theta_centers[-1], phi_centers[-1], np.inf, np.inf, np.inf])                               
+    popt, pcov = opt.curve_fit(gauss2D, (theta_grid, phi_grid), ydata, p0=initial_guess, bounds = bounds)
+    print(initial_guess)
+    print(popt)
+    print(pcov)
+    sigX, sigY = popt[3], popt[4]
     
-    
-    return thetaCOM, phiCOM
-
-
+    return comSinc, thetaCOM, phiCOM, sigX, sigY
 
 def calc2Dhisto(theta, phi, powSpec, angle, name, path):# Flatten all arrays to 1D
     theta_flat = theta.ravel()

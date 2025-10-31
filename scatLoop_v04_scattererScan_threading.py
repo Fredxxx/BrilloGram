@@ -1,19 +1,23 @@
 import numpy as np
+import sys
+sys.path.append(r'C:\Users\Fred\Documents\GitHub\BrilloGram')
+import configparser
+configparser.SafeConfigParser = configparser.ConfigParser
 import biobeam as bb
 import time
 from types import SimpleNamespace
 import os
 import brilloFunctions as bf
 import tifffile as tiff
-import matplotlib.pyplot as plt
-from numpy.fft import fftn, fftshift, fftfreq
+#import matplotlib.pyplot as plt
+#from numpy.fft import fftn, fftshift, fftfreq
 from scipy.ndimage import center_of_mass
 from scipy.ndimage import zoom
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import contextlib
-import os
+#import contextlib
+#import os
 from datetime import datetime
-import sys
+#import sys
 import arrayfire as af
 import gc
 af.device_gc()
@@ -58,12 +62,12 @@ if np.min([dxDet, dxExc]) <= optExc.dx:
 #%%
 mainPath = "C:\\Users\\Goerlitz\\Documents\\temp\\20251006_scaScatt_768_Exc02LS_Det08CO_50nm_90deg_Tabea\\"
 
-scatPath = 'C:\\Users\\Goerlitz\\Documents\\temp\\Tabea_mouseembryo_001_512.tif'
-scatVol1 = tiff.imread(scatPath)/10000
-scatVol = np.transpose(scatVol1, (1, 0, 2))
-sf = 0.200/optExc.dx
-scale_factors = (sf, sf, sf)
-scatVol = zoom(scatVol1, scale_factors, order=1)  # order=1 = linear interpolation
+# scatPath = 'C:\\Users\\Goerlitz\\Documents\\temp\\Tabea_mouseembryo_001_512.tif'
+# scatVol1 = tiff.imread(scatPath)/10000
+# scatVol = np.transpose(scatVol1, (1, 0, 2))
+# sf = 0.200/optExc.dx
+# scale_factors = (sf, sf, sf)
+# scatVol = zoom(scatVol1, scale_factors, order=1)  # order=1 = linear interpolation
 
 
 
@@ -77,7 +81,7 @@ vol = bf.create_sphere_with_gaussian_noise(shape=(optExc.Nx, optExc.Nx, optExc.N
 padded_scatVol = np.random.normal(1.33, 0.002, size=(optExc.Nx*3, optExc.Nx*3, optExc.Nx*3)).astype(np.float16)
 
 # Shapes 
-sz, sy, sx = scatVol.shape # xxx
+sz, sy, sx = vol.shape#scatVol.shape # xxx
 Z, Y, X = padded_scatVol.shape
 
 # Start-Indices (zentriert)
@@ -91,9 +95,9 @@ end_y = start_y + sy
 end_x = start_x + sx
 
 # Insert
-padded_scatVol[start_z:end_z, start_y:end_y, start_x:end_x] = scatVol # xxx
+padded_scatVol[start_z:end_z, start_y:end_y, start_x:end_x] = vol#scatVol # xxx
 print("... propagation volume loaded/generated")
-del scatVol
+# del scatVol #xxx
 del vol
 # %% pepare vols histo parameters and scatter propagator
 psfE, psfD, theta, phi, bins, angles_rad, sexy, kxy = bf.prepPara(optExc, optDet)
@@ -170,7 +174,7 @@ def process_shift(coo, sx, sy, sz, padded_scatVol, psfE, psfDgen, optExc, optDet
    return i, j, w, ts1inc, ps1inc
 
 # Use ThreadPoolExecutor
-with ThreadPoolExecutor(max_workers=3) as executor:  # adjust workers to CPU cores
+with ThreadPoolExecutor(max_workers=1) as executor:  # adjust workers to CPU cores
     futures = []
     for i in range(xsteps):
         start_x = round(sx - xrange/2) + i * xstepSize
