@@ -1,19 +1,20 @@
 import numpy as np
 import sys
-sys.path.append(r'C:\Users\Fred\Documents\GitHub\BrilloGram')
 import configparser
 configparser.SafeConfigParser = configparser.ConfigParser
 import time
 from types import SimpleNamespace
 import os
-import brilloFunctions_v05 as bf
-import tifffile as tiff
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import arrayfire as af
 
 af.device_gc()
 os.environ["PYOPENCL_COMPILER_OUTPUT"] = "0"  # deaktiviert Ausgabe komplett
 # %% set parameters
+sys.path.append(r'C:\Users\Fred\Documents\GitHub\BrilloGram')
+import brilloFunctions_v05 as bf
+mainPath = "C:\\Fred\\temp\\test\\"
+
 s = time.time()
 
 optExc = SimpleNamespace()
@@ -38,8 +39,6 @@ optDet.NA = 0.8
 optDet.n0 = optExc.n0
 optDet.lam = 0.580
 optDet.angle = 90
-
-mainPath = "C:\\Fred\\temp\\test\\"
 
 # check if pixelsize smaller than Nyquist 
 dxExc = optExc.lam/2/optExc.NA
@@ -74,7 +73,7 @@ print("... prepared PSFs")
 
 #%% define steps
 
-xsteps = 3
+xsteps = 3 #64
 xrange = round(optExc.Nx * 0.75) #512#
 xstepSize = round(xrange/(xsteps - 1))
 xrange = 0 if xsteps == 1 else xrange
@@ -92,10 +91,12 @@ zstepSize = 0 if zsteps == 1 else round(zrange / (zsteps - 1))
 
 
 #%% threading
-dTheta = np.zeros((xsteps, ysteps, zsteps))
-dPhi = np.zeros((xsteps, ysteps, zsteps))
-sTheta = np.zeros((xsteps, ysteps, zsteps))
-sPhi = np.zeros((xsteps, ysteps, zsteps))
+comTheta = np.zeros((xsteps, ysteps, zsteps))
+comPhi = np.zeros((xsteps, ysteps, zsteps))
+stdTheta = np.zeros((xsteps, ysteps, zsteps))
+stdPhi = np.zeros((xsteps, ysteps, zsteps))
+meanTheta = np.zeros((xsteps, ysteps, zsteps))
+meanPhi = np.zeros((xsteps, ysteps, zsteps))
 
 # Use ThreadPoolExecutor
 with ThreadPoolExecutor(max_workers=1) as executor:  # adjust workers to CPU cores
@@ -120,10 +121,12 @@ with ThreadPoolExecutor(max_workers=1) as executor:  # adjust workers to CPU cor
     for future in as_completed(futures):
         res = SimpleNamespace()
         res = future.result()
-        dTheta[res.x, res.y, res.z] = res.thetaCOM
-        dPhi[res.x, res.y, res.z] = res.phiCOM
-        sTheta[res.x, res.y, res.z] = res.sigX
-        sPhi[res.x, res.y, res.z] = res.sigY
+        comTheta[res.x, res.y, res.z] = res.thetaCOM
+        comPhi[res.x, res.y, res.z] = res.phiCOM
+        stdTheta[res.x, res.y, res.z] = res.thetaSTD
+        stdPhi[res.x, res.y, res.z] = res.phiSTD
+        meanTheta[res.x, res.y, res.z] = res.thetaMean
+        meanPhi[res.x, res.y, res.z] = res.phiMean
         completed += 1
         print(f"[{completed}/{total_tasks}] Completed i={i}, j={j}, w={w}")
         
@@ -134,34 +137,9 @@ xRes = 1 / (scatDim / 10000)
 yRes = 1 / (scatDim / 10000)
 
 name = 'dTheta'
-bf.saveDist(mainPath, 'comTheta', dTheta[:,:,0], xRes, yRes, scatDim)
-bf.saveDist(mainPath, 'comPhi', dPhi[:,:,0], xRes, yRes, scatDim)
-bf.saveDist(mainPath, 'sigTheta', sTheta[:,:,0], xRes, yRes, scatDim)
-bf.saveDist(mainPath, 'sigPhi', sPhi[:,:,0], xRes, yRes, scatDim)
-
-# # Save
-# filename2 = mainPath + 'dTheta.tiff'
-# np.savetxt(mainPath + "dTheta.txt", thSave, fmt="%.5f", delimiter="\t")
-# tiff.imwrite(
-#     filename2,
-#     dTheta.astype(np.float32),
-#     imagej=True,
-#     resolution=(x_resolution, y_resolution),
-#     metadata={
-#         'spacing': scatDim,    # Z voxel size
-#         'unit': 'um'      # physical unit
-#     }
-#     )
-
-# filename2 = mainPath + 'dPhi.tiff'
-# np.savetxt(mainPath + "dPhi.txt", phSave, fmt="%.5f", delimiter="\t")
-# tiff.imwrite(
-#     filename2,
-#     dPhi.astype(np.float32),
-#     imagej=True,
-#     resolution=(x_resolution, y_resolution),
-#     metadata={
-#         'spacing': scatDim,    # Z voxel size
-#         'unit': 'um'      # physical unit
-#     }
-#     )
+bf.saveDist(mainPath, 'comTheta', comTheta[:,:,0], xRes, yRes, scatDim)
+bf.saveDist(mainPath, 'comPhi', comPhi[:,:,0], xRes, yRes, scatDim)
+bf.saveDist(mainPath, 'stdTheta', stdTheta[:,:,0], xRes, yRes, scatDim)
+bf.saveDist(mainPath, 'stdPhi', stdPhi[:,:,0], xRes, yRes, scatDim)
+bf.saveDist(mainPath, 'meanTheta', meanTheta[:,:,0], xRes, yRes, scatDim)
+bf.saveDist(mainPath, 'meanPhi', meanPhi[:,:,0], xRes, yRes, scatDim)
