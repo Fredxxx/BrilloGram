@@ -6,9 +6,7 @@ import time
 from types import SimpleNamespace
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import arrayfire as af
 
-af.device_gc()
 os.environ["PYOPENCL_COMPILER_OUTPUT"] = "0"  # deaktiviert Ausgabe komplett
 # %% set parameters
 sys.path.append(r'C:\Users\Fred\Documents\GitHub\BrilloGram')
