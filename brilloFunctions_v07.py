@@ -12,6 +12,7 @@ import os
 from types import SimpleNamespace
 import gc
 import tifffile as tiff
+import json
 os.environ["PYOPENCL_COMPILER_OUTPUT"] = "0"  # deaktiviert Ausgabe komplett
 
 def prepPara(optExc, optDet):
@@ -29,7 +30,7 @@ def prepPara(optExc, optDet):
                             lam = optDet.lam, NA = optDet.NA, n0 = optDet.n0, 
                             return_all_fields = True, 
                             n_integration_steps = 100)
-    psfD = exDgen + eyDgen + ezDgen
+    psfD = exDgen
     
     #psfE = psfDgen
     
@@ -92,14 +93,24 @@ def create_sphere_with_gaussian_noise(shape=(256, 256, 256),
     # Add Gaussian noise
     volume += np.random.normal(0, noise_std, size=shape)
     return volume.astype(np.float16)
-    
-def process_shift(coo, padded_scatVol, psfE, psfDgen, optExc, optDet, mainPath, theta, phi, i, j, w):
-   
-   # prepare
-   print(f" working on i={i}, j={j}")
+ 
+
+def json_serializable(obj):
+    """Konvertiert Objekte (wie NumPy-Arrays), die JSON nicht nativ versteht."""
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, (np.float32, np.float64)):
+        return float(obj)
+    if isinstance(obj, (np.int32, np.int64)):
+        return int(obj)
+    raise TypeError(f"Typ {type(obj)} nicht JSON-serialisierbar")   
+
+def process_shift2(coo, padded_scatVol, psfE, psfDgen, optExc, optDet, optGen, path, theta, phi, i, j, w, idx, idxMax):
+      
+   # report progress
+   per = idx/idxMax*100
+   print(f"{per:.1f}% ({idx}/{idxMax})", end='\r')
    sys.stdout.flush()
-
-
    
    # Excitation: shift volume, init propagator and propagate
    te = padded_scatVol[coo[4]:coo[5], coo[2]:coo[3], coo[0]:coo[1]]
@@ -123,29 +134,112 @@ def process_shift(coo, padded_scatVol, psfE, psfDgen, optExc, optDet, mainPath, 
    
    # Powerspectrum 
    psfS = psfEscat * psfDscat
-   #psfS = fftgpuPS(psfS)
-   psfS = fftcpuPS(psfS)
+   #psS = fftcpuPS(psfS)
    
    # calc results
-   sx = round((coo[0]+coo[1])/2)
-   sy = round((coo[2]+coo[3])/2)
-   sz = round((coo[4]+coo[5])/2)
-   name = "sx" + num2Str0000(sx) + "_sy" + num2Str0000(sy) + "_sz" + num2Str0000(sz)
-   res = SimpleNamespace()
-   res.comSinc, res.thetaCOM, res.phiCOM, res.thetaSTD, res.phiSTD, res.thetaMean, res.phiMean = calcRes(theta, phi, psfS, str(optDet.angle), name, mainPath)
-   res.x = i
-   res.y = j
-   res.z = w
-   
-   # delete, not really necessary anymore?!
+   calcMain(fftcpuPS(psfS), 'sys', theta, phi, optDet, optGen, idx, coo, i, j, w, path)
    del psfS
-   del psfDscat
+   gc.collect()
+   calcMain(fftcpuPS(psfEscat), 'exc', theta, phi, optDet, optGen, idx, coo, i, j, w, path)
    del psfEscat
    gc.collect()
-   # Return results
-   return res
+   calcMain(fftcpuPS(psfDscat), 'det', theta, phi, optDet, optGen, idx, coo, i, j, w, path)
+   del psfDscat
+   gc.collect()
 
-def calcRes(theta, phi, powSpec, angle, name, path):# Flatten all arrays to 1D
+
+def calcMain(ps, name, theta, phi, optDet, optGen, idx, coo, i, j, w, path):
+    res = SimpleNamespace()
+    res.idx = num2Str0000(idx)
+    res.name = name
+    res = calcAngles(theta, phi, ps, res, str(optDet.angle))
+    res.x = i
+    res.y = j
+    res.z = w
+    sx = round((coo[0]+coo[1])/2)
+    sy = round((coo[2]+coo[3])/2)
+    sz = round((coo[4]+coo[5])/2)
+    res.pos = "sx" + num2Str0000(sx) + "_sy" + num2Str0000(sy) + "_sz" + num2Str0000(sz)
+    res = calcBrilloSpec(optDet, optGen, res)
+    path = os.path.join(path, res.name, f"{res.idx}.json")
+    with open(path, 'w') as f:
+        json.dump(vars(res), f, indent=4, default=json_serializable)
+
+def lor(alpha, weight, optGen, f):
+    shift = optGen.BSshiftA * np.sin(np.deg2rad(alpha))
+    width = optGen.BSwidthA * np.sin(np.deg2rad(alpha))**2
+    f_r = f[np.newaxis, :] 
+    denominator = ((f_r - shift[:, np.newaxis])**2 + (0.5*width[:, np.newaxis])**2)
+    numerator = width[:, np.newaxis] 
+
+    # We also apply the weight vector now
+    return (numerator / denominator) * weight[:, np.newaxis]
+
+def calcBrilloSpec(optDet, optGen, res):
+    #  convert to brillouin shift
+    q0 = (1/optDet.lam)**2
+    res.thetaComBS = q0 * optGen.Vs * np.sin(np.deg2rad(res.thetaCOM)/2) * 10**-9
+    res.phiComBS = q0 * optGen.Vs * np.sin(np.deg2rad(res.phiCOM)/2) * 10**-9
+    res.thetaStdBS = q0 * optGen.Vs * np.sin(np.deg2rad(res.thetaSTD)/2) * 10**-9
+    # include water spread
+    res.BSspecX = np.arange(optGen.BSspecStart, optGen.BSspecEnd, optGen.BSspecRes)
+    res.BSspecSumPhi = np.sum(res.hist, axis=1)
+    res.BSspecThX = res.thetaBins[:-1] + 0.5
+    res.BSspecTheta = np.sum(lor(res.BSspecThX, res.BSspecSumPhi, optGen, res.BSspecX), axis=0)
+    #plt.plot(f,m)
+    return res
+
+def calcAngles(theta, phi, powSpec, res, angle):
+
+    # spread of angles   
+    thetaFlat = theta.ravel()
+    phiFlat = phi.ravel()
+    powerFlat = powSpec.ravel()
+   
+    # Define bin edges for angular resolution
+    res.thetaBins = np.linspace(0, 180, 181)         # polar angle: 0 to 180 deg
+    res.phiBins = np.linspace(-180, 180, 361)      # azimuth: -180 to 180 deg
+    
+    # Create 2D histogram in (theta, phi)
+    res.hist, _, _= np.histogram2d(
+        thetaFlat, phiFlat, bins=[res.thetaBins, res.phiBins], weights=powerFlat)
+    
+    # Plot/save the angular power distribution
+    #fig, ax = plt.subplots(figsize=(10, 5))
+    #im = ax.imshow(
+    #    res.hist.T,
+    #    extent=[res.thetaBins[0], res.thetaBins[-1], res.phiBins[0], res.phiBins[-1]],
+    #    aspect='equal', origin='lower', cmap='inferno'
+    #)
+    #ax.set_xlabel('Polar angle θ [deg]')
+    #ax.set_ylabel('Azimuthal angle φ [deg]')
+    #fig.colorbar(im, ax=ax, label='Power')    
+    #ax.set_title('psHist' + "\n" + res.name +" / "+ angle)  
+    #fig.savefig(path + name + "_deg" + angle + ".png", dpi=300, bbox_inches='tight')
+    #np.savetxt(path + name + "_deg" + angle + ".txt", hist, fmt='%.5f')
+    #plt.show()
+    #plt.close()
+    
+    # calc COM
+    res.comSinc = tuple(np.round(center_of_mass(powSpec)).astype(int))
+    res.thetaCOM = float(theta[res.comSinc])
+    res.phiCOM = float(phi[res.comSinc])
+    
+    # calc std and mean
+    # meshgrid
+    thetaGrid, phiGrid = np.meshgrid(res.thetaBins[:-1] + 0.5, res.phiBins[:-1] + 0.5, indexing='ij')
+    # normalization factor
+    weight = np.sum(res.hist)
+    # mean value
+    res.thetaMean = np.sum(thetaGrid * res.hist) / weight
+    res.phiMean   = np.sum(phiGrid * res.hist) / weight
+    # STD
+    res.thetaSTD = np.sqrt(np.sum(res.hist * (thetaGrid - res.thetaMean)**2) / weight)
+    res.phiSTD   = np.sqrt(np.sum(res.hist * (phiGrid - res.phiMean)**2) / weight)
+
+    return res
+
+def calcResOld(theta, phi, powSpec, angle, name, path):# Flatten all arrays to 1D
 
     # spread of angles   
     thetaFlat = theta.ravel()

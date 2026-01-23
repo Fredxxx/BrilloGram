@@ -8,24 +8,29 @@ configparser.SafeConfigParser = configparser.ConfigParser
 import time
 from types import SimpleNamespace
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 
-
-os.environ["PYOPENCL_COMPILER_OUTPUT"] = "0"  # deaktiviert Ausgabe komplett
 # %% set parameters
-sys.path.append(r'/g/prevedel/members/Goerlitz/projectsHPC/brillo')
-import brilloFunctions_v06_cluster as bf
+#sys.path.append(r'/g/prevedel/members/Goerlitz/projectsHPC/brillo')
+sys.path.append(r'C:/Users/Fred/Documents/GitHub/BrilloGram')
+import brilloFunctions_v07 as bf
 #mainPath = "/g/prevedel/members/Goerlitz/projectsHPC/brillo/results/"
-mainPath = "/scratch/goerlitz/brilloCopy/768pix_64x64_180deg_"
+mainPath = "C:/Fred/temp/"
+name = "test"
+path = os.path.join(mainPath, name)
+os.makedirs(path, exist_ok=True)
+os.makedirs(os.path.join(path, "sys"), exist_ok=True)
+os.makedirs(os.path.join(path, "exc"), exist_ok=True)
+os.makedirs(os.path.join(path, "det"), exist_ok=True)
 
 s = time.time()
 
 
 optExc = SimpleNamespace()
-optExc.Nx = 768
+optExc.Nx = 128
 optExc.Ny = optExc.Nx
 optExc.Nz = optExc.Nx
-optExc.dx = 0.05
+optExc.dx = 0.15
 optExc.dy = optExc.dx
 optExc.dz = optExc.dx
 optExc.NA = 0.2
@@ -42,7 +47,15 @@ optDet.dz = optDet.dx
 optDet.NA = 0.8
 optDet.n0 = optExc.n0
 optDet.lam = 0.580
-optDet.angle = 180
+optDet.angle = 90 
+
+optGen = SimpleNamespace()
+optGen.Vs = 1490 * 10**6 #m/s 
+optGen.BSshiftA = 5 # GHz
+optGen.BSwidthA = 0.29 # GHz
+optGen.BSspecStart = 2 # GHz
+optGen.BSspecEnd  = 7 # GHz
+optGen.BSspecRes = 0.01 # GHz
 
 # check if pixelsize smaller than Nyquist 
 dxExc = optExc.lam/2/optExc.NA
@@ -77,8 +90,8 @@ print("... prepared PSFs")
 
 #%% define steps
 
-xsteps = 64
-xrange = 608
+xsteps = 4
+xrange = 64
 xstepSize = round(xrange/(xsteps - 1))
 xrange = 0 if xsteps == 1 else xrange
 xstepSize = 0 if xsteps == 1 else round(xrange / (xsteps - 1))
@@ -101,52 +114,40 @@ stdTheta = np.zeros((xsteps, ysteps, zsteps))
 stdPhi = np.zeros((xsteps, ysteps, zsteps))
 meanTheta = np.zeros((xsteps, ysteps, zsteps))
 meanPhi = np.zeros((xsteps, ysteps, zsteps))
+# %%
+coordinate_sets = []
+idx = 0
+idxMax = xsteps*ysteps*zsteps
+for i in range(xsteps):
+    start_x = round(sx - xrange/2) + i * xstepSize
+    end_x = start_x + sx
+    for j in range(ysteps):
+        start_y = round(sy - yrange/2) + j * ystepSize
+        end_y = start_y + sy
+        for w in range(zsteps):
+            idx += 1
+            start_z = round(sz - zrange/2) + w * zstepSize
+            end_z = start_z + sz
+            # Group all arguments for each task
+            coo = [start_x, end_x, start_y, end_y, start_z, end_z]
+            coordinate_sets.append((coo, padded_scatVol, psfE, psfD, optExc, optDet, optGen, path, theta, phi, i, j, w, idx, idxMax))
 
-# Use ThreadPoolExecutor
-with ThreadPoolExecutor(max_workers=8) as executor:  # adjust workers to CPU cores
-    futures = []
-    bf.print_memory_usage(padded_scatVol=padded_scatVol, 
-                          psfE=psfE, psfD=psfD, optExc=optExc, optDet=optDet,
-                          mainPath=mainPath, theta=theta, phi=phi)
-    for i in range(xsteps):
-        start_x = round(sx - xrange/2) + i * xstepSize
-        end_x   = start_x + sx
-        for j in range(ysteps):
-            start_y = round(sy - yrange/2) + j * ystepSize 
-            end_y   = start_y + sy
-            for w in range(zsteps):
-                start_z = round(sz - zrange/2) + w * zstepSize
-                end_z   = start_z + sz
-                coo = [start_x, end_x, start_y, end_y, start_z, end_z]
-                futures.append(executor.submit(bf.process_shift, coo, 
-                                               padded_scatVol, psfE, psfD, 
-                                               optExc, optDet, mainPath,
-                                               theta, phi, i, j, w))
-                
-    total_tasks = len(futures)
-    completed = 0
-    for future in as_completed(futures):
-        res = SimpleNamespace()
-        res = future.result()
-        comTheta[res.x, res.y, res.z] = res.thetaCOM
-        comPhi[res.x, res.y, res.z] = res.phiCOM
-        stdTheta[res.x, res.y, res.z] = res.thetaSTD
-        stdPhi[res.x, res.y, res.z] = res.phiSTD
-        meanTheta[res.x, res.y, res.z] = res.thetaMean
-        meanPhi[res.x, res.y, res.z] = res.phiMean
-        completed += 1
-        print(f"[{completed}/{total_tasks}] Completed")
+# Execute in parallel
+with ThreadPoolExecutor(max_workers=8) as executor:
+    # Use a helper to unpack arguments since map takes one iterable
+    executor.map(lambda p: bf.process_shift2(*p), coordinate_sets)
+
         
 #%% save phi and theta
-scatDim = optExc.dx
+# scatDim = optExc.dx
 
-xRes = 1 / (scatDim / 10000)
-yRes = 1 / (scatDim / 10000)
+# xRes = 1 / (scatDim / 10000)
+# yRes = 1 / (scatDim / 10000)
 
-name = 'dTheta'
-bf.saveDist(mainPath, 'comTheta', comTheta[:,:,0], xRes, yRes, scatDim)
-bf.saveDist(mainPath, 'comPhi', comPhi[:,:,0], xRes, yRes, scatDim)
-bf.saveDist(mainPath, 'stdTheta', stdTheta[:,:,0], xRes, yRes, scatDim)
-bf.saveDist(mainPath, 'stdPhi', stdPhi[:,:,0], xRes, yRes, scatDim)
-bf.saveDist(mainPath, 'meanTheta', meanTheta[:,:,0], xRes, yRes, scatDim)
-bf.saveDist(mainPath, 'meanPhi', meanPhi[:,:,0], xRes, yRes, scatDim)
+# name = 'dTheta'
+# bf.saveDist(mainPath, 'comTheta', comTheta[:,:,0], xRes, yRes, scatDim)
+# bf.saveDist(mainPath, 'comPhi', comPhi[:,:,0], xRes, yRes, scatDim)
+# bf.saveDist(mainPath, 'stdTheta', stdTheta[:,:,0], xRes, yRes, scatDim)
+# bf.saveDist(mainPath, 'stdPhi', stdPhi[:,:,0], xRes, yRes, scatDim)
+# bf.saveDist(mainPath, 'meanTheta', meanTheta[:,:,0], xRes, yRes, scatDim)
+# bf.saveDist(mainPath, 'meanPhi', meanPhi[:,:,0], xRes, yRes, scatDim)
