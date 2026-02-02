@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tifffile 
 
-pathMain = r'C:\Fred\temp\90deg_08NA_gauss_32_00deg_3'
+pathMain = r'C:\Fred\temp\90deg_tabea_01'
 #pathMain = r'\\prevedel.embl.de\prevedel\members\Goerlitz\BrillouinMicroscopy\20251215_90degVS180deg\90deg'
 
 
@@ -39,7 +39,7 @@ for i, (nFold, nTitle) in enumerate(zip(Lfolder, Lname)):
         except json.JSONDecodeError:
             print(f"Failed to parse {json_files[-1]}")
     
-    s = [32, 32, 1]#[64, 64, 1]
+    s = [4, 4, 1]#[64, 64, 1]
     thCOMdeg = np.zeros((s))
     thCOMbs = np.zeros((s))
     thSTDdeg = np.zeros((s))
