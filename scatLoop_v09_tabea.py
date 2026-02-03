@@ -17,7 +17,7 @@ sys.path.append(r'C:/Users/Fred/Documents/GitHub/BrilloGram')
 import brilloFunctions_v09_tabea as bf
 #mainPath = "/g/prevedel/members/Goerlitz/projectsHPC/brillo/results/"
 mainPath = "C:/Fred/temp/"
-name = "90deg_tabea_00_deg_16x16"
+name = "90deg_tabea_00_deg_32x32"
 #mainPath = "/scratch/goerlitz/brilloCopy/"
 path = os.path.join(mainPath, name)
 os.makedirs(path, exist_ok=True)
@@ -119,8 +119,8 @@ print("... propagation volume loaded/generated")
 
 #%% define steps
 
-xsteps = 2
-xrange = 320#384
+xsteps = 32
+xrange = 768#320
 xstepSize = round(xrange/(xsteps - 1))
 xrange = 0 if xsteps == 1 else xrange
 xstepSize = 0 if xsteps == 1 else round(xrange / (xsteps - 1))
@@ -137,12 +137,7 @@ zstepSize = 0 if zsteps == 1 else round(zrange / (zsteps - 1))
 
 
 #%% threading
-comTheta = np.zeros((xsteps, ysteps, zsteps))
-comPhi = np.zeros((xsteps, ysteps, zsteps))
-stdTheta = np.zeros((xsteps, ysteps, zsteps))
-stdPhi = np.zeros((xsteps, ysteps, zsteps))
-meanTheta = np.zeros((xsteps, ysteps, zsteps))
-meanPhi = np.zeros((xsteps, ysteps, zsteps))
+# ♦
 # %%
 coordinate_sets = []
 idx = 0
@@ -162,7 +157,7 @@ for i in range(xsteps):
             coordinate_sets.append((coo, padded_scatVol, psfE, psfD, optExc, optDet, optGen, path, theta, phi, i, j, w, idx, idxMax))
 
 # Execute in parallel
-with ThreadPoolExecutor(max_workers=20) as executor:
+with ThreadPoolExecutor(max_workers=1) as executor:
     # Use a helper to unpack arguments since map takes one iterable
     executor.map(lambda p: bf.process_shift2(*p), coordinate_sets)
 
