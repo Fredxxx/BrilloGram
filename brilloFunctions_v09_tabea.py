@@ -44,7 +44,7 @@ def prepPara2(optExc, optDet):
     
     #% histograms
     # Define bins (e.g. 0° to 90°, 180 bins → 0.5° bin width)
-    bins = np.linspace(0, 180, 181)
+    bins = np.linspace(0, 180, 1801)
     # Define angle bins
     n_bins = 180
     angle_bins = np.rad2deg(np.linspace(0, np.pi, n_bins))  # radians
@@ -107,12 +107,20 @@ def json_serializable(obj):
         return int(obj)
     raise TypeError(f"Typ {type(obj)} nicht JSON-serialisierbar")   
 
+
+def safe_print_progress(per, idx, idx_max):
+    # \033[F bewegt den Cursor eine Zeile hoch
+    # \033[K löscht die Zeile ab Cursor-Position
+    sys.stdout.write(f"\033[F\033[K{per:.1f}% ({idx}/{idx_max})\n")
+    sys.stdout.flush()
+
 def process_shift2(coo, padded_scatVol, psfE, psfDgen, optExc, optDet, optGen, path, theta, phi, i, j, w, idx, idxMax):
       
    # report progress
    per = idx/idxMax*100
-   print(f"{per:.1f}% ({idx}/{idxMax})", end='\r')
-   sys.stdout.flush()
+   safe_print_progress(per, idx, idxMax)
+   #print(f"{per:.1f}% ({idx}/{idxMax})", end='\r')
+   #sys.stdout.flush()
    
    # Excitation: shift volume, init propagator and propagate
    te = padded_scatVol[coo[4]:coo[5], coo[2]:coo[3], coo[0]:coo[1]]
@@ -146,15 +154,15 @@ def process_shift2(coo, padded_scatVol, psfE, psfDgen, optExc, optDet, optGen, p
    gc.collect()
    saveHisto(resS, path, optDet)
    
-   resE = calcMain(fftcpuPS(psfEscat), 'exc', theta, phi, optDet, optGen, idx, coo, i, j, w, path)
-   del psfEscat
-   gc.collect()
-   saveHisto(resE, path, optDet)
+   # resE = calcMain(fftcpuPS(psfEscat), 'exc', theta, phi, optDet, optGen, idx, coo, i, j, w, path)
+   # del psfEscat
+   # gc.collect()
+   # saveHisto(resE, path, optDet)
    
-   resD = calcMain(fftcpuPS(psfDscat), 'det', theta, phi, optDet, optGen, idx, coo, i, j, w, path)
-   del psfDscat
-   gc.collect()
-   saveHisto(resD, path, optDet)
+   # resD = calcMain(fftcpuPS(psfDscat), 'det', theta, phi, optDet, optGen, idx, coo, i, j, w, path)
+   # del psfDscat
+   # gc.collect()
+   # saveHisto(resD, path, optDet)
 
 def saveHisto(res, path, optDet):
    # Plot/save the angular power distribution
@@ -169,8 +177,8 @@ def saveHisto(res, path, optDet):
    fig.colorbar(im, ax=ax, label='Power')    
    ax.set_title('psHist' + "\n" + res.name +" / "+ str(optDet.angle))  
    fig.savefig(os.path.join(path, res.name, f"{res.idx}_fig.png"), dpi=300, bbox_inches='tight')
-   np.savetxt(os.path.join(path, res.name, f"{res.idx}_fig.txt"), res.hist, fmt='%.5f')
-   #plt.show()
+   #np.savetxt(os.path.join(path, res.name, f"{res.idx}_fig.txt"), res.hist, fmt='%.5f')
+   plt.show()
    plt.close()
 
 def calcMain(ps, name, theta, phi, optDet, optGen, idx, coo, i, j, w, path):
@@ -223,8 +231,8 @@ def calcAngles(theta, phi, powSpec, res, angle):
     powerFlat = powSpec.ravel()
    
     # Define bin edges for angular resolution
-    res.thetaBins = np.linspace(0, 180, 181)         # polar angle: 0 to 180 deg
-    res.phiBins = np.linspace(-180, 180, 361)      # azimuth: -180 to 180 deg
+    res.thetaBins = np.linspace(0, 180, 1801)         # polar angle: 0 to 180 deg
+    res.phiBins = np.linspace(-180, 180, 3601)      # azimuth: -180 to 180 deg
     
     # Create 2D histogram in (theta, phi)
     res.hist, _, _= np.histogram2d(
@@ -248,16 +256,18 @@ def calcAngles(theta, phi, powSpec, res, angle):
     
     # calc COM
     res.comSinc = tuple(np.round(center_of_mass(powSpec)).astype(int))
-    res.thetaCOM = float(theta[res.comSinc])
+    res.thetaCOM = float(theta[res.comSinc]) + 180 
+    print(res.thetaCOM)
+    sys.stdout.flush()
     res.phiCOM = float(phi[res.comSinc])
     
     # calc std and mean
     # meshgrid
-    thetaGrid, phiGrid = np.meshgrid(res.thetaBins[:-1] + 0.5, res.phiBins[:-1] + 0.5, indexing='ij')
+    thetaGrid, phiGrid = np.meshgrid(res.thetaBins[:-1] + 180, res.phiBins[:-1] + 0.5, indexing='ij')
     # normalization factor
     weight = np.sum(res.hist)
     # mean value
-    res.thetaMean = np.sum(thetaGrid * res.hist) / weight
+    res.thetaMean = np.sum(thetaGrid * res.hist) / weight 
     res.phiMean   = np.sum(phiGrid * res.hist) / weight
     # STD
     res.thetaSTD = np.sqrt(np.sum(res.hist * (thetaGrid - res.thetaMean)**2) / weight)
@@ -405,7 +415,7 @@ def plot_max_projections(volume, voxel_size=(1.0, 1.0, 1.0), cmap='hot', title="
     #plt.show()
     
 def saveDist(path, name, data, xRes, yRes, scatDim):
-    np.savetxt(path + name + ".txt", data, fmt="%.5f", delimiter="\t")
+    #np.savetxt(path + name + ".txt", data, fmt="%.5f", delimiter="\t")
     tiff.imwrite(
         path + name + '.tiff',
         data.astype(np.float32),

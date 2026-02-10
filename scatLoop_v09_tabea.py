@@ -16,9 +16,11 @@ from concurrent.futures import ThreadPoolExecutor
 sys.path.append(r'C:/Users/Fred/Documents/GitHub/BrilloGram')
 import brilloFunctions_v09_tabea as bf
 #mainPath = "/g/prevedel/members/Goerlitz/projectsHPC/brillo/results/"
+
 mainPath = "C:/Fred/temp/"
-name = "90deg_tabea_00_deg_32x32"
+name = "90deg_tabea_32x32_01"
 #mainPath = "/scratch/goerlitz/brilloCopy/"
+
 path = os.path.join(mainPath, name)
 os.makedirs(path, exist_ok=True)
 os.makedirs(os.path.join(path, "sys"), exist_ok=True)
@@ -46,7 +48,7 @@ optDet.dz = optDet.dx
 optDet.NA = 0.8
 optDet.n0 = optExc.n0
 optDet.lam = 0.580
-optDet.angle = 0 
+optDet.angle = 0
 
 optGen = SimpleNamespace()
 optGen.Vs = 1490 * 10**6 #m/s 
@@ -56,11 +58,11 @@ optGen.BSspecStart = 2 # GHz
 optGen.BSspecEnd  = 7 # GHz
 optGen.BSspecRes = 0.01 # GHz
 
-# check if pixelsize smaller than Nyquist 
-dxExc = optExc.lam/2/optExc.NA
-dxDet = optDet.lam/2/optDet.NA
-if np.min([dxDet, dxExc]) <= optExc.dx:
-    print('..........................Warning ...................................... -> K-Space not Nyquist sampled for choosen NA and dx.')
+# # check if pixelsize smaller than Nyquist 
+# dxExc = optExc.lam/2/optExc.NA
+# dxDet = optDet.lam/2/optDet.NA
+# if np.min([dxDet, dxExc]) <= optExc.dx:
+#     print('..........................Warning ...................................... -> K-Space not Nyquist sampled for choosen NA and dx.')
 #%% prepare propagation volume
 
 
@@ -74,7 +76,7 @@ if np.min([dxDet, dxExc]) <= optExc.dx:
 # vol = bf.create_sphere_with_gaussian_noise(shape=(optExc.Nx, optExc.Nx, optExc.Nx),
 #                                         n_background=1.33,
 #                                         n_sphere=1.35,
-#                                         radius= 64,#32,#64, #xxx256,
+#                                         radius= 64,#32,#64, #256
 #                                         noise_std=0.001)
 
 
@@ -82,35 +84,44 @@ if np.min([dxDet, dxExc]) <= optExc.dx:
 
 
 
-scatPath = 'C:\\Fred\\temp\\Tabea_mouseembryo_001.tif'
+scatPath = 'C:\\Fred\\temp\\Tabea_mouseembryo_001.tif' #512x512x136, 0.23umx0.23umx0.46um
 scatVol = tiff.imread(scatPath)/10000
 #scatVol = np.transpose(scatVol, (1, 0, 2))
-sf = 230/100
-scale_factors = (sf, sf, sf)
+scatVol = np.swapaxes(scatVol, 0, 2)
+sf = 2.3
+scale_factors = (sf, sf, 4*sf)
 scatVol = zoom(scatVol, scale_factors, order=1)  # order=1 = linear interpolation
-
-t = 768//2
-z_mid, y_mid, x_mid = np.array(scatVol.shape) // 2
-sub_vol = scatVol[z_mid-t:z_mid+t, 
-                  y_mid-t:y_mid+t, 
-                  x_mid-t:x_mid+t]
-
-padded_scatVol = bf.genPaddArray(optExc.Nx, optExc.Nx, optExc.Nx, sub_vol)
+padded_scatVol = bf.genPaddArray(optExc.Nx, optExc.Nx, optExc.Nx, scatVol)
+#bf.plot_max_projections(padded_scatVol, voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="padded_scatVol")
 del scatVol
-del sub_vol
+
 
 # %% pepare vols histo parameters and scatter propagator
 psfE, psfD, theta, phi, bins, angles_rad, sexy, kxy = bf.prepPara2(optExc, optDet)
 print("... prepared PSFs")
 #%% plot
 # psfSys = psfE*psfD
-# bf.plot_max_projections(padded_scatVol)
+# bf.plot_max_projections(scatVol)
 # bf.plot_max_projections(np.abs(psfE))
 # bf.plot_max_projections(np.abs(psfD))
 # bf.plot_max_projections(np.abs(psfSys))
 # bf.plot_max_projections(bf.fftgpuPS(psfE))
 # bf.plot_max_projections(bf.fftgpuPS(psfD))
 # bf.plot_max_projections(bf.fftgpuPS(psfSys))
+
+# #%%
+# resS = bf.calcMain(bf.fftgpuPS(psfSys), 'sys', theta, phi, optDet, optGen, 0, [0,0,0,0,0,0], 0, 0, 0, path)
+# bf.saveHisto(resS, path, optDet)
+# %%save tiffs
+
+# bf.saveDist(path, "scatVol", padded_scatVol, optExc.dx, optExc.dx, optExc.dx)
+# bf.saveDist(path, "psfE", psfE, optExc.dx, optExc.dx, optExc.dx)
+# bf.saveDist(path, "psfD", psfD, optExc.dx, optExc.dx, optExc.dx)
+# bf.saveDist(path, "psfSys", psfSys, optExc.dx, optExc.dx, optExc.dx)
+
+# bf.saveDist(path, "psE", bf.fftgpuPS(psfE), optExc.dx, optExc.dx, optExc.dx)
+# bf.saveDist(path, "psD", bf.fftgpuPS(psfD), optExc.dx, optExc.dx, optExc.dx)
+# bf.saveDist(path, "psSys", bf.fftgpuPS(psfSys), optExc.dx, optExc.dx, optExc.dx)
 # %%
 
 sz, sy, sx = psfE.shape
@@ -120,7 +131,7 @@ print("... propagation volume loaded/generated")
 #%% define steps
 
 xsteps = 32
-xrange = 768#320
+xrange = 736#320
 xstepSize = round(xrange/(xsteps - 1))
 xrange = 0 if xsteps == 1 else xrange
 xstepSize = 0 if xsteps == 1 else round(xrange / (xsteps - 1))
@@ -157,7 +168,7 @@ for i in range(xsteps):
             coordinate_sets.append((coo, padded_scatVol, psfE, psfD, optExc, optDet, optGen, path, theta, phi, i, j, w, idx, idxMax))
 
 # Execute in parallel
-with ThreadPoolExecutor(max_workers=1) as executor:
+with ThreadPoolExecutor(max_workers=4) as executor:
     # Use a helper to unpack arguments since map takes one iterable
     executor.map(lambda p: bf.process_shift2(*p), coordinate_sets)
 

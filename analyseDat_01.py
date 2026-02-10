@@ -6,8 +6,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import tifffile 
 
-pathMain = r'C:\Fred\temp\90deg_tabea_00_deg_32x32'
-#pathMain = r'\\prevedel.embl.de\prevedel\members\Goerlitz\BrillouinMicroscopy\20251215_90degVS180deg\90deg'
+#pathMain = r'C:\Fred\temp\90deg_tabea_00_deg_32x32'
+pathMain = r'\\prevedel.embl.de\prevedel\members\Goerlitz\BrillouinMicroscopy\20260209_Tabea\90deg_tabea_90_deg_32x32_02'
 
 
 Lfolder = ['sys', 'det', 'exc']
