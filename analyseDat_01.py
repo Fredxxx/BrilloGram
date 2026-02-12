@@ -7,13 +7,15 @@ import matplotlib.pyplot as plt
 import tifffile 
 
 #pathMain = r'C:\Fred\temp\90deg_tabea_00_deg_32x32'
-pathMain = r'\\prevedel.embl.de\prevedel\members\Goerlitz\BrillouinMicroscopy\20260209_Tabea\90deg_tabea_90_deg_32x32_02'
+pathMain = r'\\prevedel.embl.de\prevedel\members\Goerlitz\BrillouinMicroscopy\20260211_Tabea_02\90deg_tabea_32x32_01'
 
 
-Lfolder = ['sys', 'det', 'exc']
-Lname = ['System', 'Detection', 'Excitation']
+#Lfolder = ['sys', 'det', 'exc']
+#Lname = ['System', 'Detection', 'Excitation']
+Lfolder = ['sys']
+Lname = ['System']
 deg = '90deg'
-dn = '0.02dn'  # Falls "dn" im Titel enthalten sein soll
+dn = 'Tabea 32x32'  # Falls "dn" im Titel enthalten sein soll
 
 
 numFolders = len(Lfolder)
@@ -60,7 +62,7 @@ for i, (nFold, nTitle) in enumerate(zip(Lfolder, Lname)):
                 thSTDbs[res.x, res.y, res.z] = res.thetaStdBS
             except json.JSONDecodeError:
                 print(f"Failed to parse {f}")
-    
+
     
     #%%
     # Pfade definieren
