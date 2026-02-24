@@ -17,11 +17,11 @@ os.environ["PYOPENCL_COMPILER_OUTPUT"] = "0"  # deaktiviert Ausgabe komplett
 
 def prepPara2(optExc, optDet):
     # calculate excitation PSF 
-    _ ,exE,eyE,ezE = bb.focus_field_cylindrical(shape = (optExc.Nx, optExc.Ny, optExc.Nz), 
-                                              units = (optExc.dx, optExc.dy, optExc.dz), 
-                                              lam = optExc.lam, NA = optExc.NA, n0 = optExc.n0, 
-                                              return_all_fields = True, 
-                                              n_integration_steps = 100)
+    # _ ,exE,eyE,ezE = bb.focus_field_cylindrical(shape = (optExc.Nx, optExc.Ny, optExc.Nz), 
+    #                                           units = (optExc.dx, optExc.dy, optExc.dz), 
+    #                                           lam = optExc.lam, NA = optExc.NA, n0 = optExc.n0, 
+    #                                           return_all_fields = True, 
+    #                                           n_integration_steps = 100)
     
     
     # _ ,psfE, _, _  = bb.focus_field_beam(shape = ( optExc.Nx, optExc.Ny, optExc.Nz), 
@@ -30,11 +30,11 @@ def prepPara2(optExc, optDet):
     #                     return_all_fields = True, 
     #                     n_integration_steps = 100)
     
-    # _ ,exE,eyE,ezE = bb.focus_field_beam(shape = (optExc.Nx, optExc.Ny, optExc.Nz), 
-    #                                           units = (optExc.dx, optExc.dy, optExc.dz), 
-    #                                           lam = optExc.lam, NA = optExc.NA, n0 = optExc.n0, 
-    #                                           return_all_fields = True, 
-    #                                           n_integration_steps = 100)
+    _ ,exE,eyE,ezE = bb.focus_field_beam(shape = (optExc.Nx, optExc.Ny, optExc.Nz), 
+                                              units = (optExc.dx, optExc.dy, optExc.dz), 
+                                              lam = optExc.lam, NA = optExc.NA, n0 = optExc.n0, 
+                                              return_all_fields = True, 
+                                              n_integration_steps = 100)
 
     psfE = exE #+ eyE + ezE
     
@@ -46,7 +46,6 @@ def prepPara2(optExc, optDet):
                             n_integration_steps = 100)
     psfD = rotPSF(exDgen, optDet.angle)
     
-    
     # angle space
     Nz, Ny, Nx = psfE.shape
     kx = fftshift(fftfreq(Nx, d=optDet.dx)) * 2 * np.pi
@@ -55,18 +54,9 @@ def prepPara2(optExc, optDet):
     theta = np.rad2deg(np.arccos(KZ / k_mag))  # polar angle
     phi = np.rad2deg(np.arctan2(KY, KX))       # azimuthal angle
     
-    #% histograms
-    # Define bins (e.g. 0° to 90°, 180 bins → 0.5° bin width)
-    bins = np.linspace(0, 180, 1801)
-    # Define angle bins
-    n_bins = 180
-    angle_bins = np.rad2deg(np.linspace(0, np.pi, n_bins))  # radians
-    angles_rad = np.deg2rad(angle_bins) # angles in radians
-    d = optExc.Nz*optExc.dz/2
-    sexy = [-d, d, -d, d]
-    kxy = [np.min(kx), np.max(kx), np.min(kx), np.max(kx)]
+    return psfE.astype(np.complex64), psfD.astype(np.complex64), theta.astype(np.float16), phi.astype(np.float16)
     
-    return psfE.astype(np.complex64), psfD.astype(np.complex64), theta.astype(np.float16), phi.astype(np.float16), bins, angles_rad, sexy, kxy
+    #return psfE.astype(np.complex64), psfD.astype(np.complex64), theta.astype(np.float16), phi.astype(np.float16), bins, angles_rad, sexy, kxy
     #return psfE, psfDgen, theta, phi, bins, angles_rad, sexy, kxy
 
 
@@ -86,6 +76,42 @@ def genPaddArray(sx, sy, sz, vol):
     # Insert
     padded_scatVol[start_z:end_z, start_y:end_y, start_x:end_x] = vol
     return padded_scatVol
+
+def genPaddArray2(sx, sy, sz, vol):
+    # 1. Ziel-Größe definieren (3-fache der übergebenen Parameter)
+    Z, Y, X = sx * 3 , sy * 3, sz * 3
+    
+    # 2. Das große Hintergrund-Array erstellen
+    padded_scatVol = np.random.normal(1.33335, 0.00074, size=(Z, Y, X)).astype(np.float16)
+    
+    # Dimensionen des Eingabe-Volumens
+    vz, vy, vx = vol.shape
+    
+    # 3. Schnittbereiche berechnen
+    # Wir bestimmen für jede Achse:
+    # - Wo im Ziel-Array (padded_scatVol) fangen wir an?
+    # - Wo im Quell-Array (vol) fangen wir an?
+    # - Wie viele Pixel/Voxel kopieren wir insgesamt?
+    
+    def get_indices(target_size, source_size):
+        # Startpunkt im Ziel-Array (0, wenn Quelle größer ist)
+        start_t = max(0, (target_size - source_size) // 2)
+        # Startpunkt im Quell-Array (Zentrum-Ausschnitt, wenn Quelle größer ist)
+        start_s = max(0, (source_size - target_size) // 2)
+        # Wie viel passt maximal rein?
+        length = min(target_size, source_size)
+        return start_t, start_s, length
+
+    zt, zs, zl = get_indices(Z, vz)
+    yt, ys, yl = get_indices(Y, vy)
+    xt, xs, xl = get_indices(X, vx)
+
+    # 4. Einfügen / Ausschneiden
+    # Wir nehmen einen Teil von vol und setzen ihn in einen Teil von padded_scatVol ein
+    padded_scatVol[zt:zt+zl, yt:yt+yl, xt:xt+xl] = vol[zs:zs+zl, ys:ys+yl, xs:xs+xl]
+    
+    return padded_scatVol
+
 
 def create_sphere_with_gaussian_noise(shape=(256, 256, 256),
                                       n_background=1.33,
@@ -137,10 +163,15 @@ def process_shift2(coo, padded_scatVol, psfE, psfDgen, optExc, optDet, optGen, p
    
    # Excitation: shift volume, init propagator and propagate
    te = padded_scatVol[coo[4]:coo[5], coo[2]:coo[3], coo[0]:coo[1]]
-   td = padded_scatVol[coo[4]:coo[5], coo[0]:coo[1], coo[2]:coo[3]]
+   td=te
+   #td = padded_scatVol[coo[4]:coo[5], coo[0]:coo[1], coo[2]:coo[3]]
+   #plot_max_projections(te, voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="te")
+   #plot_max_projections(td, voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="td")
    del padded_scatVol 
-   te = bb.Bpm3d(dn=te, units = (optDet.dx,)*3, lam=optExc.lam/optExc.n0)
+   te = bb.Bpm3d(dn=te, units = (optDet.dx,)*3, lam=optDet.lam/optExc.n0)
    psfEscat = te.propagate(u0 = psfE[0,:,:])
+   #plot_max_projections(np.abs(psfEscat), voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="psfEScat")
+   
    del psfE 
    del te 
    gc.collect()
@@ -150,6 +181,8 @@ def process_shift2(coo, padded_scatVol, psfE, psfDgen, optExc, optDet, optGen, p
    # t = bb.Bpm3d(dn=t, units = (optDet.dx,)*3, lam=optDet.lam/optExc.n0)
    td = bb.Bpm3d(dn=td, units = (optDet.dx,)*3, lam=optDet.lam/optExc.n0)
    psfDscat = td.propagate(u0 = psfDgen[0,:,:])
+   #plot_max_projections(np.abs(psfDscat), voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="psfDScat")
+   
    psfDscat = rotPSF(psfDscat, 90)
    psfEscat = rotPSF(psfEscat, 90)
 
@@ -159,7 +192,10 @@ def process_shift2(coo, padded_scatVol, psfE, psfDgen, optExc, optDet, optGen, p
    
    # Powerspectrum 
    psfS = psfEscat * psfDscat
-   #psS = fftcpuPS(psfS)
+   plot_max_projections(np.abs(psfS), voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="psfS")
+   psS = fftcpuPS(psfS)
+   plot_max_projections(psS, voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="psfS")
+   
    
    # calc results
    resS = calcMain(fftgpuPS(psfS), 'sys', theta, phi, optDet, optGen, idx, coo, i, j, w, path)
@@ -190,9 +226,9 @@ def saveHisto(res, path, optDet):
    fig.colorbar(im, ax=ax, label='Power')    
    ax.set_title('psHist' + "\n" + res.name +" / "+ str(optDet.angle))  
    fig.savefig(os.path.join(path, res.name, f"{res.idx}_fig.png"), dpi=300, bbox_inches='tight')
-   #np.savetxt(os.path.join(path, res.name, f"{res.idx}_fig.txt"), res.hist, fmt='%.5f')
+   # #np.savetxt(os.path.join(path, res.name, f"{res.idx}_fig.txt"), res.hist, fmt='%.5f')
    plt.show()
-   plt.close()
+   # plt.close()
 
 def calcMain(ps, name, theta, phi, optDet, optGen, idx, coo, i, j, w, path):
     res = SimpleNamespace()
@@ -238,18 +274,42 @@ def calcBrilloSpec(optDet, optGen, res):
 
 def calcAngles(theta, phi, powSpec, res, angle):
 
-    # spread of angles   
+    # # spread of angles   
+    # thetaFlat = theta.ravel()
+    # phiFlat = phi.ravel()
+    # powerFlat = powSpec.ravel()
+   
+    # # Define bin edges for angular resolution
+    # res.thetaBins = np.linspace(0, 180, 181)         # polar angle: 0 to 180 deg
+    # res.phiBins = np.linspace(-180, 180, 361)      # azimuth: -180 to 180 deg
+    
+    # # Create 2D histogram in (theta, phi)
+    # res.hist, _, _= np.histogram2d(
+    #     thetaFlat, phiFlat, bins=[res.thetaBins, res.phiBins], weights=powerFlat)
+    
     thetaFlat = theta.ravel()
     phiFlat = phi.ravel()
     powerFlat = powSpec.ravel()
-   
-    # Define bin edges for angular resolution
-    res.thetaBins = np.linspace(0, 180, 1801)         # polar angle: 0 to 180 deg
-    res.phiBins = np.linspace(-180, 180, 3601)      # azimuth: -180 to 180 deg
     
-    # Create 2D histogram in (theta, phi)
-    res.hist, _, _= np.histogram2d(
+    res.thetaBins = np.linspace(0, 180, 181)
+    res.phiBins = np.linspace(-180, 180, 361)
+    
+    # --- HIER SETZT DU AN ---
+    
+    # 1. Das gewichtete Histogramm (Energie-Summe)
+    hist_sum, _, _ = np.histogram2d(
         thetaFlat, phiFlat, bins=[res.thetaBins, res.phiBins], weights=powerFlat)
+    
+    # 2. Das ungewichtete Histogramm (Pixel-Anzahl pro Bin)
+    # Das ist der "Korrekturfaktor" für die Pixelgröße
+    counts, _, _ = np.histogram2d(
+        thetaFlat, phiFlat, bins=[res.thetaBins, res.phiBins])
+    
+    # 3. Normalisierung: Mittlere Intensität berechnen
+    # Das sorgt dafür, dass die Kanten scharf und dx-unabhängig bleiben
+    with np.errstate(divide='ignore', invalid='ignore'):
+        res.hist = hist_sum / counts
+        res.hist[counts == 0] = 0  # Wo keine Pixel sind, bleibt es 0
     
     # # Plot/save the angular power distribution
     # fig, ax = plt.subplots(figsize=(10, 5))
@@ -269,14 +329,14 @@ def calcAngles(theta, phi, powSpec, res, angle):
     
     # calc COM
     res.comSinc = tuple(np.round(center_of_mass(powSpec)).astype(int))
-    res.thetaCOM = float(theta[res.comSinc]) + 180 
+    res.thetaCOM = float(theta[res.comSinc]) 
     print(res.thetaCOM)
     sys.stdout.flush()
     res.phiCOM = float(phi[res.comSinc])
     
     # calc std and mean
     # meshgrid
-    thetaGrid, phiGrid = np.meshgrid(res.thetaBins[:-1] + 180, res.phiBins[:-1] + 0.5, indexing='ij')
+    thetaGrid, phiGrid = np.meshgrid(res.thetaBins[:-1], res.phiBins[:-1] + 0.5, indexing='ij')
     # normalization factor
     weight = np.sum(res.hist)
     # mean value
@@ -480,7 +540,10 @@ def plot_max_projections2(volume, voxel_size=(1.0, 1.0, 1.0), cmap='hot', title=
     axes[2].set_xlabel(f'Y ({unit})')
     axes[2].set_ylabel(f'Z ({unit})')
 
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    fig.colorbar(axes[2].images[0], ax=axes.ravel().tolist(), fraction=0.046, pad=0.04, aspect=20)
+    plt.tight_layout(rect=[0, 0, 0.9, 1])
+
+    #plt.tight_layout(rect=[0, 0, 1, 0.95])
     return fig, axes
     
     
