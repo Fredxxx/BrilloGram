@@ -152,6 +152,12 @@ def safe_print_progress(per, idx, idx_max):
     # \033[K löscht die Zeile ab Cursor-Position
     sys.stdout.write(f"\033[F\033[K{per:.1f}% ({idx}/{idx_max})\n")
     sys.stdout.flush()
+    
+    
+def safe_print(t):
+    sys.stdout.write(t)
+    sys.stdout.write("\n")
+    sys.stdout.flush()
 
 def process_shift2(coo, padded_scatVol, psfE, psfDgen, optExc, optDet, optGen, path, theta, phi, i, j, w, idx, idxMax):
       
@@ -192,13 +198,14 @@ def process_shift2(coo, padded_scatVol, psfE, psfDgen, optExc, optDet, optGen, p
    
    # Powerspectrum 
    psfS = psfEscat * psfDscat
-   plot_max_projections(np.abs(psfS), voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="psfS")
-   psS = fftcpuPS(psfS)
-   plot_max_projections(psS, voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="psfS")
+   #plot_max_projections(np.abs(psfS), voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="psfS")
+   #psS = fftcpuPS(psfS)
+   #plot_max_projections(psS, voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="psfS")
    
    
    # calc results
    resS = calcMain(fftgpuPS(psfS), 'sys', theta, phi, optDet, optGen, idx, coo, i, j, w, path)
+   safe_print(resS)
    del psfS
    gc.collect()
    saveHisto(resS, path, optDet)
@@ -228,10 +235,11 @@ def saveHisto(res, path, optDet):
    fig.savefig(os.path.join(path, res.name, f"{res.idx}_fig.png"), dpi=300, bbox_inches='tight')
    # #np.savetxt(os.path.join(path, res.name, f"{res.idx}_fig.txt"), res.hist, fmt='%.5f')
    plt.show()
-   # plt.close()
+   plt.close()
 
 def calcMain(ps, name, theta, phi, optDet, optGen, idx, coo, i, j, w, path):
     res = SimpleNamespace()
+    safe_print("1")
     res.idx = num2Str0000(idx)
     res.name = name
     res = calcAngles(theta, phi, ps, res, str(optDet.angle))
@@ -244,6 +252,8 @@ def calcMain(ps, name, theta, phi, optDet, optGen, idx, coo, i, j, w, path):
     res.pos = "sx" + num2Str0000(sx) + "_sy" + num2Str0000(sy) + "_sz" + num2Str0000(sz)
     res = calcBrilloSpec(optDet, optGen, res)
     path = os.path.join(path, res.name, f"{res.idx}.json")
+    safe_print(path)
+    safe_print("2")
     with open(path, 'w') as f:
         json.dump(vars(res), f, indent=4, default=json_serializable)
     return res
@@ -286,31 +296,29 @@ def calcAngles(theta, phi, powSpec, res, angle):
     # # Create 2D histogram in (theta, phi)
     # res.hist, _, _= np.histogram2d(
     #     thetaFlat, phiFlat, bins=[res.thetaBins, res.phiBins], weights=powerFlat)
-    
+
     thetaFlat = theta.ravel()
     phiFlat = phi.ravel()
     powerFlat = powSpec.ravel()
-    
+
     res.thetaBins = np.linspace(0, 180, 181)
     res.phiBins = np.linspace(-180, 180, 361)
-    
-    # --- HIER SETZT DU AN ---
     
     # 1. Das gewichtete Histogramm (Energie-Summe)
     hist_sum, _, _ = np.histogram2d(
         thetaFlat, phiFlat, bins=[res.thetaBins, res.phiBins], weights=powerFlat)
-    
+
     # 2. Das ungewichtete Histogramm (Pixel-Anzahl pro Bin)
     # Das ist der "Korrekturfaktor" für die Pixelgröße
     counts, _, _ = np.histogram2d(
         thetaFlat, phiFlat, bins=[res.thetaBins, res.phiBins])
-    
+
     # 3. Normalisierung: Mittlere Intensität berechnen
     # Das sorgt dafür, dass die Kanten scharf und dx-unabhängig bleiben
     with np.errstate(divide='ignore', invalid='ignore'):
         res.hist = hist_sum / counts
         res.hist[counts == 0] = 0  # Wo keine Pixel sind, bleibt es 0
-    
+
     # # Plot/save the angular power distribution
     # fig, ax = plt.subplots(figsize=(10, 5))
     # im = ax.imshow(
@@ -329,18 +337,18 @@ def calcAngles(theta, phi, powSpec, res, angle):
     
     # calc COM
     res.comSinc = tuple(np.round(center_of_mass(powSpec)).astype(int))
-    res.thetaCOM = float(theta[res.comSinc]) 
+    res.thetaCOM = float(theta[res.comSinc]) + 90
     print(res.thetaCOM)
     sys.stdout.flush()
     res.phiCOM = float(phi[res.comSinc])
-    
+
     # calc std and mean
     # meshgrid
     thetaGrid, phiGrid = np.meshgrid(res.thetaBins[:-1], res.phiBins[:-1] + 0.5, indexing='ij')
     # normalization factor
     weight = np.sum(res.hist)
     # mean value
-    res.thetaMean = np.sum(thetaGrid * res.hist) / weight 
+    res.thetaMean = np.sum(thetaGrid * res.hist) / weight + 90
     res.phiMean   = np.sum(phiGrid * res.hist) / weight
     # STD
     res.thetaSTD = np.sqrt(np.sum(res.hist * (thetaGrid - res.thetaMean)**2) / weight)

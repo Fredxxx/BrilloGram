@@ -19,14 +19,14 @@ import brilloFunctions_v10 as bf
 #mainPath = "/g/prevedel/members/Goerlitz/projectsHPC/brillo/results/"
 
 mainPath = "C:/Fred/temp/"
-name = "ttt"#"90deg_tabea_32x32_01"
+name = "00deg_tabea_32x32_gaussBeam"
 #mainPath = "/scratch/goerlitz/brilloCopy/"
 
 path = os.path.join(mainPath, name)
 os.makedirs(path, exist_ok=True)
 os.makedirs(os.path.join(path, "sys"), exist_ok=True)
-os.makedirs(os.path.join(path, "exc"), exist_ok=True)
-os.makedirs(os.path.join(path, "det"), exist_ok=True)
+#os.makedirs(os.path.join(path, "exc"), exist_ok=True)
+#os.makedirs(os.path.join(path, "det"), exist_ok=True)
 
 optExc = SimpleNamespace()
 optExc.Nx = 512#768 #512 #256-good
@@ -172,7 +172,7 @@ print("... propagation volume loaded/generated")
 #%% define steps
 
 xsteps = 2
-xrange = 256#320
+xrange = 512#320
 xstepSize = round(xrange/(xsteps - 1))
 xrange = 0 if xsteps == 1 else xrange
 xstepSize = 0 if xsteps == 1 else round(xrange / (xsteps - 1))
@@ -207,7 +207,7 @@ for i in range(xsteps):
             coordinate_sets.append((coo, padded_scatVol, psfE, psfD, optExc, optDet, optGen, path, theta, phi, i, j, w, idx, idxMax))
 
 # Execute in parallel
-with ThreadPoolExecutor(max_workers=1) as executor:
+with ThreadPoolExecutor(max_workers=4) as executor:
     # Use a helper to unpack arguments since map takes one iterable
     executor.map(lambda p: bf.process_shift2(*p), coordinate_sets)
 

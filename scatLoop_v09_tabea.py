@@ -130,8 +130,8 @@ print("... propagation volume loaded/generated")
 
 #%% define steps
 
-xsteps = 32
-xrange = 736#320
+xsteps = 2
+xrange = 768#320
 xstepSize = round(xrange/(xsteps - 1))
 xrange = 0 if xsteps == 1 else xrange
 xstepSize = 0 if xsteps == 1 else round(xrange / (xsteps - 1))
