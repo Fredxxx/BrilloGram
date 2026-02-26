@@ -7,15 +7,15 @@ import matplotlib.pyplot as plt
 import tifffile 
 
 #pathMain = r'C:\Fred\temp\90deg_tabea_00_deg_32x32'
-pathMain = r'\\prevedel.embl.de\prevedel\members\Goerlitz\BrillouinMicroscopy\20260211_Tabea_02\90deg_tabea_32x32_01'
+pathMain = r'\\prevedel.embl.de\prevedel\members\Goerlitz\BrillouinMicroscopy\20260225_Tabea_checkedScan\00deg_tabea_32x32_besselBeam'
 
 
 #Lfolder = ['sys', 'det', 'exc']
 #Lname = ['System', 'Detection', 'Excitation']
 Lfolder = ['sys']
 Lname = ['System']
-deg = '90deg'
-dn = 'Tabea 32x32'  # Falls "dn" im Titel enthalten sein soll
+deg = '00deg'
+dn = 'Tabea 32x32 bessel'  # Falls "dn" im Titel enthalten sein soll
 
 
 numFolders = len(Lfolder)
@@ -56,9 +56,10 @@ for i, (nFold, nTitle) in enumerate(zip(Lfolder, Lname)):
                 res = json.load(f, object_hook=lambda d: SimpleNamespace(**d))
                 perc = ((i + (j / numFiles)) / numFolders) * 100
                 print(f"progress...   {perc:6.2f}%")
-                thCOMdeg[res.x, res.y, res.z] = res.thetaCOM
+                _, mu_theta, sigma_theta = res.fitOp_theta
+                thCOMdeg[res.x, res.y, res.z] = mu_theta
                 thCOMbs[res.x, res.y, res.z] = res.thetaComBS
-                thSTDdeg[res.x, res.y, res.z] = res.thetaSTD
+                thSTDdeg[res.x, res.y, res.z] = sigma_theta
                 thSTDbs[res.x, res.y, res.z] = res.thetaStdBS
             except json.JSONDecodeError:
                 print(f"Failed to parse {f}")
@@ -71,10 +72,10 @@ for i, (nFold, nTitle) in enumerate(zip(Lfolder, Lname)):
     
     # Daten-Struktur (Titel, Array-Variable, Basis-Name, Einheit)
     plot_data = [
-        ("Brillouin Shift (COM)", np.squeeze(thCOMdeg), "thCOMdeg", "deg"),
-        ("Brillouin Shift (COM)", np.squeeze(thCOMbs), "thCOMbs", "GHz"),
-        ("Brillouin Width (STD)", np.squeeze(thSTDdeg), "thSTDdeg", "deg"),
-        ("Brillouin Width (STD)", np.squeeze(thSTDbs), "thSTDbs", "GHz")
+        ("Brillouin Shift", np.squeeze(thCOMdeg), "muTheta", "deg"),
+        ("Brillouin Shift", np.squeeze(thCOMbs), "muTheta", "GHz"),
+        ("Brillouin Width", np.squeeze(thSTDdeg), "sigTheta", "deg"),
+        ("Brillouin Width", np.squeeze(thSTDbs), "sigTheta", "GHz")
     ]
     
     # save as tiff and txt

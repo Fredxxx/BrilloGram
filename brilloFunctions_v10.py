@@ -14,6 +14,7 @@ import gc
 import tifffile as tiff
 import json
 os.environ["PYOPENCL_COMPILER_OUTPUT"] = "0"  # deaktiviert Ausgabe komplett
+from scipy.optimize import curve_fit
 
 def prepPara2(optExc, optDet):
     # calculate excitation PSF 
@@ -24,19 +25,19 @@ def prepPara2(optExc, optDet):
     #                                           n_integration_steps = 100)
     
     
-    # _ ,psfE, _, _  = bb.focus_field_beam(shape = ( optExc.Nx, optExc.Ny, optExc.Nz), 
-    #                     units = ( optExc.dx, optExc.dy, optExc.dz), 
-    #                     lam = optExc.lam, NA = [0.75, 0.8], n0 = optExc.n0, 
-    #                     return_all_fields = True, 
-    #                     n_integration_steps = 100)
+    _ ,psfE, _, _  = bb.focus_field_beam(shape = ( optExc.Nx, optExc.Ny, optExc.Nz), 
+                        units = ( optExc.dx, optExc.dy, optExc.dz), 
+                        lam = optExc.lam, NA = [0.75, 0.8], n0 = optExc.n0, 
+                        return_all_fields = True, 
+                        n_integration_steps = 100)
     
-    _ ,exE,eyE,ezE = bb.focus_field_beam(shape = (optExc.Nx, optExc.Ny, optExc.Nz), 
-                                              units = (optExc.dx, optExc.dy, optExc.dz), 
-                                              lam = optExc.lam, NA = optExc.NA, n0 = optExc.n0, 
-                                              return_all_fields = True, 
-                                              n_integration_steps = 100)
+    # _ ,exE,eyE,ezE = bb.focus_field_beam(shape = (optExc.Nx, optExc.Ny, optExc.Nz), 
+    #                                           units = (optExc.dx, optExc.dy, optExc.dz), 
+    #                                           lam = optExc.lam, NA = optExc.NA, n0 = optExc.n0, 
+    #                                           return_all_fields = True, 
+    #                                           n_integration_steps = 100)
 
-    psfE = exE #+ eyE + ezE
+    # psfE = exE #+ eyE + ezE
     
     # calculate detection PSF
     _ ,exDgen, _, _ = bb.focus_field_beam(shape = ( optDet.Nx, optDet.Ny, optDet.Nz), 
@@ -205,7 +206,6 @@ def process_shift2(coo, padded_scatVol, psfE, psfDgen, optExc, optDet, optGen, p
    
    # calc results
    resS = calcMain(fftgpuPS(psfS), 'sys', theta, phi, optDet, optGen, idx, coo, i, j, w, path)
-   safe_print(resS)
    del psfS
    gc.collect()
    saveHisto(resS, path, optDet)
@@ -239,7 +239,6 @@ def saveHisto(res, path, optDet):
 
 def calcMain(ps, name, theta, phi, optDet, optGen, idx, coo, i, j, w, path):
     res = SimpleNamespace()
-    safe_print("1")
     res.idx = num2Str0000(idx)
     res.name = name
     res = calcAngles(theta, phi, ps, res, str(optDet.angle))
@@ -250,10 +249,9 @@ def calcMain(ps, name, theta, phi, optDet, optGen, idx, coo, i, j, w, path):
     sy = round((coo[2]+coo[3])/2)
     sz = round((coo[4]+coo[5])/2)
     res.pos = "sx" + num2Str0000(sx) + "_sy" + num2Str0000(sy) + "_sz" + num2Str0000(sz)
-    res = calcBrilloSpec(optDet, optGen, res)
+    #res = calcBrilloSpec(optDet, optGen, res)
+    res = calcBrilloSpec2(optDet, optGen, res)
     path = os.path.join(path, res.name, f"{res.idx}.json")
-    safe_print(path)
-    safe_print("2")
     with open(path, 'w') as f:
         json.dump(vars(res), f, indent=4, default=json_serializable)
     return res
@@ -267,6 +265,26 @@ def lor(alpha, weight, optGen, f):
 
     # We also apply the weight vector now
     return (numerator / denominator) * weight[:, np.newaxis]
+
+def calcBrilloSpec2(optDet, optGen, res):
+    #  convert to brillouin shift
+    _, mu_theta, sigma_theta = res.fitOp_theta
+    _, mu_phi, sigma_phi = res.fitOp_phi
+    
+    q0 = (1/optDet.lam)**2
+    res.thetaComBS = q0 * optGen.Vs * np.sin(np.deg2rad(mu_theta)/2) * 10**-9
+    res.phiComBS = q0 * optGen.Vs * np.sin(np.deg2rad(mu_phi)/2) * 10**-9
+    res.thetaStdBS = q0 * optGen.Vs * np.sin(np.deg2rad(sigma_theta)/2) * 10**-9
+    res.phiStdBS = q0 * optGen.Vs * np.sin(np.deg2rad(sigma_phi)/2) * 10**-9
+    
+    
+    # # include water spread
+    # res.BSspecX = np.arange(optGen.BSspecStart, optGen.BSspecEnd, optGen.BSspecRes)
+    # res.BSspecSumPhi = np.sum(res.hist, axis=1)
+    # res.BSspecThX = res.thetaBins[:-1] + 0.5
+    # res.BSspecTheta = np.sum(lor(res.BSspecThX, res.BSspecSumPhi, optGen, res.BSspecX), axis=0)
+    # #plt.plot(f,m)
+    return res
 
 def calcBrilloSpec(optDet, optGen, res):
     #  convert to brillouin shift
@@ -282,39 +300,29 @@ def calcBrilloSpec(optDet, optGen, res):
     #plt.plot(f,m)
     return res
 
-def calcAngles(theta, phi, powSpec, res, angle):
+def safe_print2(mu_theta, sigma_theta, mu_phi, sigma_phi, res):
+    sys.stdout.write(f"IDX: {res.idx}, theta={mu_theta:.4f}, sigmaTh={sigma_theta:.4f}, phi={mu_phi:.4f}, sigmaPh={sigma_phi:.4f}")
+    sys.stdout.write("\n")
+    sys.stdout.flush()
 
-    # # spread of angles   
-    # thetaFlat = theta.ravel()
-    # phiFlat = phi.ravel()
-    # powerFlat = powSpec.ravel()
-   
-    # # Define bin edges for angular resolution
-    # res.thetaBins = np.linspace(0, 180, 181)         # polar angle: 0 to 180 deg
-    # res.phiBins = np.linspace(-180, 180, 361)      # azimuth: -180 to 180 deg
-    
-    # # Create 2D histogram in (theta, phi)
-    # res.hist, _, _= np.histogram2d(
-    #     thetaFlat, phiFlat, bins=[res.thetaBins, res.phiBins], weights=powerFlat)
+def calcAngles(theta, phi, powSpec, res, angle):
 
     thetaFlat = theta.ravel()
     phiFlat = phi.ravel()
     powerFlat = powSpec.ravel()
 
-    res.thetaBins = np.linspace(0, 180, 181)
-    res.phiBins = np.linspace(-180, 180, 361)
+    res.thetaBins = np.linspace(0, 180, 451)
+    res.phiBins = np.linspace(-180, 180, 901)
     
-    # 1. Das gewichtete Histogramm (Energie-Summe)
+    # weighted histogram
     hist_sum, _, _ = np.histogram2d(
         thetaFlat, phiFlat, bins=[res.thetaBins, res.phiBins], weights=powerFlat)
 
-    # 2. Das ungewichtete Histogramm (Pixel-Anzahl pro Bin)
-    # Das ist der "Korrekturfaktor" für die Pixelgröße
+    # counts per pixel
     counts, _, _ = np.histogram2d(
         thetaFlat, phiFlat, bins=[res.thetaBins, res.phiBins])
 
-    # 3. Normalisierung: Mittlere Intensität berechnen
-    # Das sorgt dafür, dass die Kanten scharf und dx-unabhängig bleiben
+    # pixel power normalised to pixel counts
     with np.errstate(divide='ignore', invalid='ignore'):
         res.hist = hist_sum / counts
         res.hist[counts == 0] = 0  # Wo keine Pixel sind, bleibt es 0
@@ -338,73 +346,44 @@ def calcAngles(theta, phi, powSpec, res, angle):
     # calc COM
     res.comSinc = tuple(np.round(center_of_mass(powSpec)).astype(int))
     res.thetaCOM = float(theta[res.comSinc]) + 90
-    print(res.thetaCOM)
-    sys.stdout.flush()
     res.phiCOM = float(phi[res.comSinc])
 
-    # calc std and mean
-    # meshgrid
-    thetaGrid, phiGrid = np.meshgrid(res.thetaBins[:-1], res.phiBins[:-1] + 0.5, indexing='ij')
-    # normalization factor
-    weight = np.sum(res.hist)
-    # mean value
-    res.thetaMean = np.sum(thetaGrid * res.hist) / weight + 90
-    res.phiMean   = np.sum(phiGrid * res.hist) / weight
-    # STD
-    res.thetaSTD = np.sqrt(np.sum(res.hist * (thetaGrid - res.thetaMean)**2) / weight)
-    res.phiSTD   = np.sqrt(np.sum(res.hist * (phiGrid - res.phiMean)**2) / weight)
+    theta_c = 0.5 * (res.thetaBins[:-1] + res.thetaBins[1:]) + 90
+    phi_c   = 0.5 * (res.phiBins[:-1] + res.phiBins[1:]) 
+    
+    res.proj_theta = res.hist.T.sum(axis=0)
+    res.proj_phi = res.hist.T.sum(axis=1)
+    
+    res.fitOp_theta, _ = curve_fit(gauss, theta_c, res.proj_theta, 
+                              p0=[res.proj_theta.max(), theta_c[np.argmax(res.proj_theta)], 5])
+
+    A_theta, mu_theta, sigma_theta = res.fitOp_theta
+    
+    res.fitOp_phi, _ = curve_fit(gauss, phi_c,  res.proj_phi, 
+                            p0=[res.proj_phi.max(), phi_c[np.argmax(res.proj_phi)], 5])
+    
+    
+    A_phi, mu_phi, sigma_phi = res.fitOp_phi
+    
+    safe_print2(mu_theta, sigma_theta, mu_phi, sigma_phi, res)
+    
+    # # calc std and mean
+    # # meshgrid
+    # thetaGrid, phiGrid = np.meshgrid(res.thetaBins[:-1], res.phiBins[:-1] + 0.5, indexing='ij')
+    # # normalization factor
+    # weight = np.sum(res.hist)
+    # # mean value
+    # res.thetaMean = np.sum(thetaGrid * res.hist) / weight + 90
+    # res.phiMean   = np.sum(phiGrid * res.hist) / weight
+    # # STD
+    # res.thetaSTD = np.sqrt(np.sum(res.hist * (thetaGrid - res.thetaMean)**2) / weight)
+    # res.phiSTD   = np.sqrt(np.sum(res.hist * (phiGrid - res.phiMean)**2) / weight)
 
     return res
 
-def calcResOld(theta, phi, powSpec, angle, name, path):# Flatten all arrays to 1D
 
-    # spread of angles   
-    thetaFlat = theta.ravel()
-    phiFlat = phi.ravel()
-    powerFlat = powSpec.ravel()
-   
-    # Define bin edges for angular resolution
-    thetaBins = np.linspace(0, 180, 181)         # polar angle: 0 to 180 deg
-    phiBins = np.linspace(-180, 180, 361)      # azimuth: -180 to 180 deg
-    
-    # Create 2D histogram in (theta, phi)
-    hist, _, _= np.histogram2d(
-        thetaFlat, phiFlat, bins=[thetaBins, phiBins], weights=powerFlat)
-    
-    # Plot/save the angular power distribution
-    fig, ax = plt.subplots(figsize=(10, 5))
-    im = ax.imshow(
-        hist.T,
-        extent=[thetaBins[0], thetaBins[-1], phiBins[0], phiBins[-1]],
-        aspect='auto', origin='lower', cmap='inferno'
-    )
-    ax.set_xlabel('Polar angle θ [deg]')
-    ax.set_ylabel('Azimuthal angle φ [deg]')
-    fig.colorbar(im, ax=ax, label='Power')    
-    ax.set_title('psHist' + "\n" + name +" / "+ angle)  
-    fig.savefig(path + name + "_deg" + angle + ".png", dpi=300, bbox_inches='tight')
-    np.savetxt(path + name + "_deg" + angle + ".txt", hist, fmt='%.5f')
-    #plt.show()
-    plt.close()
-    
-    # calc COM
-    comSinc = tuple(np.round(center_of_mass(powSpec)).astype(int))
-    thetaCOM = theta[comSinc]
-    phiCOM = phi[comSinc]
-    
-    # calc std and mean
-    # meshgrid
-    thetaGrid, phiGrid = np.meshgrid(thetaBins[:-1] + 0.5, phiBins[:-1] + 0.5, indexing='ij')
-    # normalization factor
-    weight = np.sum(hist)
-    # mean value
-    thetaMean = np.sum(thetaGrid * hist) / weight
-    phiMean   = np.sum(phiGrid * hist) / weight
-    # STD
-    thetaSTD = np.sqrt(np.sum(hist * (thetaGrid - thetaMean)**2) / weight)
-    phiSTD   = np.sqrt(np.sum(hist * (phiGrid - phiMean)**2) / weight)
-    
-    return comSinc, thetaCOM, phiCOM, thetaSTD, phiSTD, thetaMean, phiMean
+def gauss(x, A, mu, sigma):
+    return A * np.exp(-(x - mu)**2 / (2 * sigma**2))
 
 def rotPSF(psfDgen, angle):
     #s = time.time()
@@ -433,68 +412,6 @@ def fftgpuPS(psf):
 def fftcpuPS(psf):
     return np.abs(fftshift(fftn(psf)))**2
 
-def plot_max_projections(volume, voxel_size=(1.0, 1.0, 1.0), cmap='hot', title="Max Intensity Projections"):
-    """
-    chatGPT generated
-    Plottet Maximalprojektionen eines 3D-Volumes in allen drei Dimensionen mit Titel.
-    
-    Parameters:
-        volume (ndarray): 3D-Array (Z, Y, X)
-        voxel_size (tuple): (dz, dy, dx) Voxelgrößen für Achsenskalierung
-        cmap (str): Colormap für das Plotten
-        title (str): Gesamttitel der Figure
-    """
-    dz, dy, dx = voxel_size
-
-    # Max-Projektionen berechnen
-    max_xy = np.max(volume, axis=0)  # Projektion über Z
-    max_xz = np.max(volume, axis=1)  # Projektion über Y
-    max_yz = np.max(volume, axis=2)  # Projektion über X
-
-    # Plot erstellen
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-    fig.suptitle(title, fontsize=16)
-
-    # XY-Projektion
-    Z, Y, X = volume.shape
-
-    extent_xy = [
-        -X//2 * dx,  X//2 * dx,   # X-Achse
-        -Y//2 * dy,  Y//2 * dy    # Y-Achse
-        ]
-    
-    extent_xz = [
-        -X//2 * dx,  X//2 * dx,   # X-Achse
-        -Z//2 * dz,  Z//2 * dz    # Z-Achse
-        ]
-    
-    extent_yz = [
-        -Y//2 * dy,  Y//2 * dy,   # Y-Achse
-        -Z//2 * dz,  Z//2 * dz    # Z-Achse
-        ]
-    
-    axes[0].imshow(max_xy, cmap=cmap, extent=extent_xy, origin='lower', aspect='auto')
-    axes[0].set_title('Z → XY')
-    axes[0].set_xlabel('X (µm)')
-    axes[0].set_ylabel('Y (µm)')
-
-    # XZ-Projektion
-    #extent_xz = [0, volume.shape[2] * dx, 0, volume.shape[0] * dz]
-    axes[1].imshow(max_xz, cmap=cmap, extent=extent_xz, origin='lower', aspect='auto')
-    axes[1].set_title('Y → XZ')
-    axes[1].set_xlabel('X (µm)')
-    axes[1].set_ylabel('Z (µm)')
-
-    # YZ-Projektion
-    #extent_yz = [0, volume.shape[1] * dy, 0, volume.shape[0] * dz]
-    axes[2].imshow(max_yz, cmap=cmap, extent=extent_yz, origin='lower', aspect='auto')
-    axes[2].set_title('X → YZ')
-    axes[2].set_xlabel('Y (µm)')
-    axes[2].set_ylabel('Z (µm)')
-
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
-    #plt.show()
-    
     
 def plot_max_projections2(volume, voxel_size=(1.0, 1.0, 1.0), cmap='hot', title="Max Intensity Projections", space="real"):
     """

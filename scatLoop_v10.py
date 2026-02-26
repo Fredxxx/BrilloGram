@@ -14,12 +14,12 @@ from concurrent.futures import ThreadPoolExecutor
 
 # %% set parameters
 #sys.path.append(r'/g/prevedel/members/Goerlitz/projectsHPC/brillo')
-sys.path.append(r'C:/Users/Fred/Documents/GitHub/BrilloGram')
+sys.path.append(r'C:/Users/Goerlitz/BrilloGram')
 import brilloFunctions_v10 as bf
 #mainPath = "/g/prevedel/members/Goerlitz/projectsHPC/brillo/results/"
 
 mainPath = "C:/Fred/temp/"
-name = "00deg_tabea_32x32_gaussBeam"
+name = "00deg_tabea_32x32_besselBeam"
 #mainPath = "/scratch/goerlitz/brilloCopy/"
 
 path = os.path.join(mainPath, name)
@@ -93,7 +93,7 @@ sf = 2.3/0.6#2.3/2.5 #2.3
 scale_factors = (sf, sf, 4*sf)
 scatVol = zoom(scatVol, scale_factors, order=1)  # order=1 = linear interpolation
 padded_scatVol = bf.genPaddArray2(optExc.Nx, optExc.Nx, optExc.Nx, scatVol)
-bf.plot_max_projections(padded_scatVol, voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="padded_scatVol")
+bf.plot_max_projections2(padded_scatVol, voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="padded_scatVol")
 del scatVol
 
 
@@ -186,8 +186,8 @@ zsteps = 1
 zrange = xrange
 zrange = 0 if zsteps == 1 else zrange
 zstepSize = 0 if zsteps == 1 else round(zrange / (zsteps - 1))
-
-
+#%%
+#bf.process_shift2([1, 1+sz,1, 1+sz,1, 1+sz], padded_scatVol, psfE, psfD, optExc, optDet, optGen, path, theta, phi, 1, 1, 1, 1, 1)
 #%% threading
 coordinate_sets = []
 idx = 0
