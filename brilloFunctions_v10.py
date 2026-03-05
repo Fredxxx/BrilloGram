@@ -18,20 +18,20 @@ from scipy.optimize import curve_fit
 
 def prepPara2(optExc, optDet):
     # calculate excitation PSF 
-    # _ ,exE,eyE,ezE = bb.focus_field_cylindrical(shape = (optExc.Nx, optExc.Ny, optExc.Nz), 
-    #                                           units = (optExc.dx, optExc.dy, optExc.dz), 
-    #                                           lam = optExc.lam, NA = optExc.NA, n0 = optExc.n0, 
-    #                                           return_all_fields = True, 
-    #                                           n_integration_steps = 100)
+    _ ,psfE, _, _  = bb.focus_field_cylindrical(shape = (optExc.Nx, optExc.Ny, optExc.Nz), 
+                                              units = (optExc.dx, optExc.dy, optExc.dz), 
+                                              lam = optExc.lam, NA = optExc.NA, n0 = optExc.n0, 
+                                              return_all_fields = True, 
+                                              n_integration_steps = 100)
     
     
-    _ ,psfE, _, _  = bb.focus_field_beam(shape = ( optExc.Nx, optExc.Ny, optExc.Nz), 
-                        units = ( optExc.dx, optExc.dy, optExc.dz), 
-                        lam = optExc.lam, NA = [0.75, 0.8], n0 = optExc.n0, 
-                        return_all_fields = True, 
-                        n_integration_steps = 100)
+    # _ ,psfE, _, _  = bb.focus_field_beam(shape = ( optExc.Nx, optExc.Ny, optExc.Nz), 
+    #                     units = ( optExc.dx, optExc.dy, optExc.dz), 
+    #                     lam = optExc.lam, NA = [0.75, 0.8], n0 = optExc.n0, 
+    #                     return_all_fields = True, 
+    #                     n_integration_steps = 100)
     
-    # _ ,exE,eyE,ezE = bb.focus_field_beam(shape = (optExc.Nx, optExc.Ny, optExc.Nz), 
+    # _ ,psfE, _, _  = bb.focus_field_beam(shape = (optExc.Nx, optExc.Ny, optExc.Nz), 
     #                                           units = (optExc.dx, optExc.dy, optExc.dz), 
     #                                           lam = optExc.lam, NA = optExc.NA, n0 = optExc.n0, 
     #                                           return_all_fields = True, 

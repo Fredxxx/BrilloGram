@@ -18,11 +18,11 @@ os.environ["PYOPENCL_COMPILER_OUTPUT"] = "0"  # deaktiviert Ausgabe komplett
 
 def prepPara2(optExc, optDet):
     # calculate excitation PSF 
-    # _ ,psfE,eyE,ezE = bb.focus_field_cylindrical(shape = (optExc.Nx, optExc.Ny, optExc.Nz), 
-    #                                           units = (optExc.dx, optExc.dy, optExc.dz), 
-    #                                           lam = optExc.lam, NA = optExc.NA, n0 = optExc.n0, 
-    #                                           return_all_fields = True, 
-    #                                           n_integration_steps = 100)
+    _ ,psfE,eyE,ezE = bb.focus_field_cylindrical(shape = (optExc.Nx, optExc.Ny, optExc.Nz), 
+                                              units = (optExc.dx, optExc.dy, optExc.dz), 
+                                              lam = optExc.lam, NA = optExc.NA, n0 = optExc.n0, 
+                                              return_all_fields = True, 
+                                              n_integration_steps = 100)
     
     
     # _ ,psfE, _, _  = bb.focus_field_beam(shape = ( optExc.Nx, optExc.Ny, optExc.Nz), 
@@ -31,11 +31,11 @@ def prepPara2(optExc, optDet):
     #                     return_all_fields = True, 
     #                     n_integration_steps = 100)
     
-    _ ,psfE,eyE,ezE = bb.focus_field_beam(shape = (optExc.Nx, optExc.Ny, optExc.Nz), 
-                                              units = (optExc.dx, optExc.dy, optExc.dz), 
-                                              lam = optExc.lam, NA = optExc.NA, n0 = optExc.n0, 
-                                              return_all_fields = True, 
-                                              n_integration_steps = 100)
+    # _ ,psfE,eyE,ezE = bb.focus_field_beam(shape = (optExc.Nx, optExc.Ny, optExc.Nz), 
+    #                                           units = (optExc.dx, optExc.dy, optExc.dz), 
+    #                                           lam = optExc.lam, NA = optExc.NA, n0 = optExc.n0, 
+    #                                           return_all_fields = True, 
+    #                                           n_integration_steps = 100)
 
     
     # calculate detection PSF
@@ -100,6 +100,31 @@ def genPaddArray2(sx, sy, sz, vol):
     
     return padded_scatVol
 
+def genPaddArray3(sx, sy, sz, vol):
+    
+    Z, Y, X = sz*3, sy * 3, sx
+    
+    padded_scatVol = np.random.normal(1.33335, 0.00074, size=(Z, Y, X)).astype(np.float16)
+    
+    vz, vy, vx = vol.shape
+    
+    
+    def get_indices(target_size, source_size):
+        # Startpunkt im Ziel-Array (0, wenn Quelle größer ist)
+        start_t = max(0, (target_size - source_size) // 2)
+        # Startpunkt im Quell-Array (Zentrum-Ausschnitt, wenn Quelle größer ist)
+        start_s = max(0, (source_size - target_size) // 2)
+        # Wie viel passt maximal rein?
+        length = min(target_size, source_size)
+        return start_t, start_s, length
+
+    zt, zs, zl = get_indices(Z, vz)
+    yt, ys, yl = get_indices(Y, vy)
+    xt, xs, xl = get_indices(X, vx)
+
+    padded_scatVol[zt:zt+zl, yt:yt+yl, xt:xt+xl] = vol[zs:zs+zl, ys:ys+yl, xs:xs+xl]
+    
+    return padded_scatVol
 
 def create_sphere_with_gaussian_noise(shape=(256, 256, 256),
                                       n_background=1.33,
@@ -138,6 +163,11 @@ def json_serializable(obj):
 def safe_print_progress(per, idx, idx_max):
     sys.stdout.write(f"\033[F\033[K{per:.1f}% ({idx}/{idx_max})\n")
     sys.stdout.flush() 
+    
+def safe_print3(per, idx, idx_max, mu_theta, sigma_theta, mu_phi, sigma_phi, res):
+    sys.stdout.write(f"\033[F\033[K{per:.1f}% ({idx}/{idx_max}), IDX: {res.idx}, theta={mu_theta:.4f}, sigmaTh={sigma_theta:.4f}, phi={mu_phi:.4f}, sigmaPh={sigma_phi:.4f}")
+    sys.stdout.write("\n")
+    sys.stdout.flush()
     
 def safe_print(t):
     sys.stdout.write(t)
@@ -240,6 +270,8 @@ def calcMain(ps, name, theta, phi, optDet, optGen, idx, coo, i, j, w, path):
     #res = calcBrilloSpec(optDet, optGen, res)
     res = calcBrilloSpec2(optDet, optGen, res)
     path = os.path.join(path, res.name, f"{res.idx}.json")
+    safe_print(path)
+    safe_print(res.idx)
     with open(path, 'w') as f:
         json.dump(vars(res), f, indent=4, default=json_serializable)
     return res
@@ -260,10 +292,10 @@ def calcBrilloSpec2(optDet, optGen, res):
     _, mu_phi, sigma_phi = res.fitOp_phi
     
     q0 = (1/optDet.lam)**2
-    res.thetaComBS = q0 * optGen.Vs * np.sin(np.deg2rad(mu_theta)/2) * 10**-9
-    res.phiComBS = q0 * optGen.Vs * np.sin(np.deg2rad(mu_phi)/2) * 10**-9
-    res.thetaStdBS = q0 * optGen.Vs * np.sin(np.deg2rad(sigma_theta)/2) * 10**-9
-    res.phiStdBS = q0 * optGen.Vs * np.sin(np.deg2rad(sigma_phi)/2) * 10**-9
+    res.thetaComBS = q0 * optGen.Vs * np.sin(np.deg2rad(mu_theta)) * 10**-9
+    res.phiComBS = q0 * optGen.Vs * np.sin(np.deg2rad(mu_phi)) * 10**-9
+    res.thetaStdBS = q0 * optGen.Vs * np.sin(np.deg2rad(sigma_theta)) * 10**-9
+    res.phiStdBS = q0 * optGen.Vs * np.sin(np.deg2rad(sigma_phi)) * 10**-9
     
     
     # # include water spread
@@ -292,6 +324,8 @@ def safe_print2(mu_theta, sigma_theta, mu_phi, sigma_phi, res):
     sys.stdout.write(f"IDX: {res.idx}, theta={mu_theta:.4f}, sigmaTh={sigma_theta:.4f}, phi={mu_phi:.4f}, sigmaPh={sigma_phi:.4f}")
     sys.stdout.write("\n")
     sys.stdout.flush()
+    
+
     
 def calcAngles(theta, phi, powSpec, res, angle):
 
@@ -354,7 +388,6 @@ def calcAngles(theta, phi, powSpec, res, angle):
     A_phi, mu_phi, sigma_phi = res.fitOp_phi
     
     safe_print2(mu_theta, sigma_theta, mu_phi, sigma_phi, res)
-
     return res
 
 def gauss(x, A, mu, sigma):
@@ -439,7 +472,7 @@ def plot_max_projections2(volume, voxel_size=(1.0, 1.0, 1.0), cmap='hot', title=
     axes[2].set_xlabel(f'Y ({unit})')
     axes[2].set_ylabel(f'Z ({unit})')
 
-    fig.colorbar(axes[2].images[0], ax=axes.ravel().tolist(), fraction=0.046, pad=0.04, aspect=20)
+    #fig.colorbar(axes[2].images[0], ax=axes.ravel().tolist(), fraction=0.046, pad=0.04, aspect=20)
     plt.tight_layout(rect=[0, 0, 0.9, 1])
 
     #plt.tight_layout(rect=[0, 0, 1, 0.95])

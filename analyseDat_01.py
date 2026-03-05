@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import tifffile 
 
 #pathMain = r'C:\Fred\temp\90deg_tabea_00_deg_32x32'
-pathMain = r'\\prevedel.embl.de\prevedel\members\Goerlitz\BrillouinMicroscopy\20260225_Tabea_checkedScan\00deg_tabea_32x32_besselBeam'
+pathMain = r'\\prevedel.embl.de\prevedel\members\Goerlitz\BrillouinMicroscopy\20260225_Tabea_checkedScan\00deg_tabea_32x32_gaussSheet_FOV'
 
 
 #Lfolder = ['sys', 'det', 'exc']
@@ -15,7 +15,7 @@ pathMain = r'\\prevedel.embl.de\prevedel\members\Goerlitz\BrillouinMicroscopy\20
 Lfolder = ['sys']
 Lname = ['System']
 deg = '00deg'
-dn = 'Tabea 32x32 bessel'  # Falls "dn" im Titel enthalten sein soll
+dn = 'Tabea 32x32 gauss sheet'  # Falls "dn" im Titel enthalten sein soll
 
 
 numFolders = len(Lfolder)

@@ -19,7 +19,7 @@ import brilloFunctions_v10 as bf
 #mainPath = "/g/prevedel/members/Goerlitz/projectsHPC/brillo/results/"
 
 mainPath = "C:/Fred/temp/"
-name = "00deg_tabea_32x32_besselBeam"
+name = "00deg_tabea_32x32_gaussSheet_02"
 #mainPath = "/scratch/goerlitz/brilloCopy/"
 
 path = os.path.join(mainPath, name)
@@ -29,10 +29,10 @@ os.makedirs(os.path.join(path, "sys"), exist_ok=True)
 #os.makedirs(os.path.join(path, "det"), exist_ok=True)
 
 optExc = SimpleNamespace()
-optExc.Nx = 512#768 #512 #256-good
+optExc.Nx = 768#768 #512 #256-good
 optExc.Ny = optExc.Nx
 optExc.Nz = optExc.Nx
-optExc.dx = 0.04 #0.5
+optExc.dx = 0.1 #0.5
 optExc.dy = optExc.dx
 optExc.dz = optExc.dx
 optExc.NA = 0.05 #0.8
@@ -88,12 +88,12 @@ optGen.BSspecRes = 0.01 # GHz
 scatPath = 'C:\\Fred\\temp\\Tabea_mouseembryo_001.tif' #512x512x136, 0.23umx0.23umx0.46um
 scatVol = tiff.imread(scatPath)/10000
 scatVol = np.swapaxes(scatVol, 0, 2)
-sf = 2.3/0.6#2.3/2.5 #2.3
+sf = 2.3#2.3/2.5 #2.3
 #scale_factors = (sf, sf, 4*sf)
 scale_factors = (sf, sf, 4*sf)
 scatVol = zoom(scatVol, scale_factors, order=1)  # order=1 = linear interpolation
 padded_scatVol = bf.genPaddArray2(optExc.Nx, optExc.Nx, optExc.Nx, scatVol)
-bf.plot_max_projections2(padded_scatVol, voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="padded_scatVol")
+#bf.plot_max_projections2(padded_scatVol, voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="padded_scatVol")
 del scatVol
 
 
@@ -102,15 +102,15 @@ psfE, psfD, theta, phi = bf.prepPara2(optExc, optDet)
 print("... prepared PSFs")
 #% plot   
 # Excitation: shift volume, init propagator and propagate
-# center = np.array(padded_scatVol.shape) // 2
-# start = center - 768 // 2
-# end = center + 768 // 2
-# t = padded_scatVol[
-#     start[0]:end[0], 
-#     start[1]:end[1], 
-#     start[2]:end[2]
-# ]
-# t=padded_scatVol
+center = np.array(padded_scatVol.shape) // 2
+start = center - 768 // 2
+end = center + 768 // 2
+t = padded_scatVol[
+    start[0]:end[0], 
+    start[1]:end[1], 
+    start[2]:end[2]
+]
+
 
  #%%
 # center = np.array(padded_scatVol.shape) // 2
@@ -121,28 +121,30 @@ print("... prepared PSFs")
 #     start[1]:end[1], 
 #     start[2]:end[2]
 # ]
-# te = bb.Bpm3d(dn=t, units = (optDet.dx,)*3, lam=optExc.lam/optExc.n0)
-# psfEscat = te.propagate(u0 = psfE[0,:,:])
+#te = bb.Bpm3d(dn=t, units = (optDet.dx,)*3, lam=optExc.lam/optExc.n0)
+#psfEscat = te.propagate(u0 = psfE[0,:,:])
 
 # bf.plot_max_projections(np.abs(psfE), voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="psfE")
 # bf.plot_max_projections(t, voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="te")
 # bf.plot_max_projections(np.abs(psfEscat), voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="psfEscat")
 
-# # td = bb.Bpm3d(dn=t, units = (optDet.dx,)*3, lam=optDet.lam/optExc.n0)
-# # psfDscat = td.propagate(u0 = psfD[0,:,:])
+#td = bb.Bpm3d(dn=t, units = (optDet.dx,)*3, lam=optDet.lam/optExc.n0)
+#psfDscat = td.propagate(u0 = psfD[0,:,:])
 
-# # #psfDscat = bf.rotPSF(psfDscat, 90)
-# # #psfEscat = bf.rotPSF(psfEscat, 90)
+#psfDscat = bf.rotPSF(psfDscat, 90)
+#psfEscat = bf.rotPSF(psfEscat, 90)
 
-# # #psfSys = psfEscat*psfDscat
-# # #psfSys = psfE*psfD
-#bf.plot_max_projections(padded_scatVol, voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="padded_scatVol")
-# # bf.plot_max_projections2(np.abs(psfE), voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="psf excitation", space="real")
-# # bf.plot_max_projections2(np.abs(psfEscat), voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="psf excitation scat", space="real")
-# # bf.plot_max_projections2(np.abs(psfD), voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="psf detection", space="real")
-# # bf.plot_max_projections2(np.abs(psfDscat), voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="psf detection scat", space="real")
+#psfSys = psfEscat*psfDscat
+# psfSys = psfE*psfD
+# #bf.plot_max_projections(padded_scatVol, voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="padded_scatVol")
+# bf.plot_max_projections2(np.abs(psfE), voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="psf excitation", space="real")
+# #bf.plot_max_projections2(np.abs(psfEscat), voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="psf excitation scat", space="real")
+# bf.plot_max_projections2(np.abs(psfD), voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="psf detection", space="real")
+# #bf.plot_max_projections2(np.abs(psfDscat), voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="psf detection scat", space="real")
 
-
+# bf.plot_max_projections2(bf.fftgpuPS(psfE), voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="ps excitation", space="fft")
+# bf.plot_max_projections2(bf.fftgpuPS(psfD), voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="ps detection", space="fft")
+# bf.plot_max_projections2(bf.fftgpuPS(psfSys), voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="ps system", space="fft")
 
 
 # #bf.plot_max_projections2(np.abs(psfSys), voxel_size=(optExc.dx, optExc.dx, optExc.dx), cmap='hot', title="psf system", space="real")
@@ -171,8 +173,8 @@ print("... propagation volume loaded/generated")
 
 #%% define steps
 
-xsteps = 2
-xrange = 512#320
+xsteps = 32
+xrange = 768#320
 xstepSize = round(xrange/(xsteps - 1))
 xrange = 0 if xsteps == 1 else xrange
 xstepSize = 0 if xsteps == 1 else round(xrange / (xsteps - 1))
