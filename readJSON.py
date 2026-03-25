@@ -3,7 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 
-fileP = r"C:\Fred\temp\20260225_Tabea_checkedScan\00deg_tabea_32x32_gaussBeam_3600resAngle3\sys1\0004.json"
+#fileP = r"C:\Fred\temp\20260225_Tabea_checkedScan\00deg_tabea_32x32_gaussBeam_3600resAngle3\sys1\0004.json"
+fileP = r"\\prevedel.embl.de\prevedel\members\Goerlitz\BrillouinMicroscopy\20260310_tabea_02\00deg_tabea_32x32_gaussSheet\sys\0004.json"
 
 try:
     with open(fileP, "r", encoding="utf-8") as f:
